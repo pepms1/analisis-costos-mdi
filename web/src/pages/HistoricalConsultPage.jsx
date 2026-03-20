@@ -87,7 +87,7 @@ function HistoricalConsultPage() {
   return (
     <section className="page-shell">
       <PageHeader
-        title="Consulta de históricos"
+        title="Consulta de Históricos"
         description="Bitácora operativa para revisar precios reales capturados, ordenados por fecha y con filtros combinables."
       />
 

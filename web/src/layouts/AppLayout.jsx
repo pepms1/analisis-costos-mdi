@@ -4,11 +4,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 
 const primaryLinks = [
-  { to: "/consulta", label: "Consulta analítica", permission: PERMISSIONS.PRICES_VIEW },
-  { to: "/consulta-historicos", label: "Consulta de históricos", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/consulta", label: "Análisis", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/consulta-historicos", label: "Consulta de Históricos", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/captura-rapida", label: "Captura rápida", permission: PERMISSIONS.PRICES_QUICK_CAPTURE },
-  { to: "/historicos", label: "Históricos (avanzado)", permission: PERMISSIONS.PRICES_VIEW },
-  { to: "/inflacion", label: "Inflación", permission: PERMISSIONS.INFLATION_VIEW },
+  { to: "/historicos", label: "Captura avanzada", permission: PERMISSIONS.PRICES_VIEW },
 ];
 
 const catalogLinks = [
@@ -16,6 +15,7 @@ const catalogLinks = [
   { to: "/concepts", label: "Conceptos", permission: PERMISSIONS.CATALOGS_VIEW },
   { to: "/suppliers", label: "Proveedores", permission: PERMISSIONS.CATALOGS_VIEW },
   { to: "/projects", label: "Obras", permission: PERMISSIONS.BUDGETS_VIEW },
+  { to: "/inflacion", label: "Inflación", permission: PERMISSIONS.INFLATION_VIEW },
 ];
 
 const adminLinks = [
