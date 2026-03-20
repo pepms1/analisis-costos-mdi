@@ -4,8 +4,7 @@ import CrudActions from "../components/CrudActions";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 
-const currentYear = new Date().getUTCFullYear();
-const defaultRows = [currentYear - 1, currentYear, currentYear + 1].map((year) => ({ year: String(year), rate: "" }));
+const defaultForm = { year: "", rate: "" };
 
 function getYearSortValue(value) {
   const parsedYear = Number.parseInt(String(value ?? "").trim(), 10);
@@ -13,12 +12,13 @@ function getYearSortValue(value) {
 }
 
 function factorsToRows(factors = []) {
-  return factors
-    .map((factor) => ({
-      year: String(factor.label || ""),
-      rate: Number((Number(factor.factor) - 1) * 100).toFixed(2),
-    }))
-    .sort((a, b) => getYearSortValue(a.year) - getYearSortValue(b.year));
+  const rows = factors.map((factor) => ({
+    year: String(factor.label || ""),
+    rate: Number((Number(factor.factor) - 1) * 100).toFixed(2),
+  }));
+  const byYear = new Map();
+  rows.forEach((row) => byYear.set(row.year, row));
+  return Array.from(byYear.values()).sort((a, b) => getYearSortValue(a.year) - getYearSortValue(b.year));
 }
 
 function rowsToFactors(rows) {
@@ -54,7 +54,7 @@ function adjustmentToForm(item) {
   return {
     id: item.id,
     name: item.name || "Inflación anual",
-    rows: factorsToRows(item.factors),
+    rows: factorsToRows(item.factors || []),
   };
 }
 
@@ -62,9 +62,10 @@ function AdjustmentsPage() {
   const { user } = useAuth();
   const canDeleteInflation = user?.role === "superadmin";
   const [items, setItems] = useState([]);
-  const [rows, setRows] = useState(defaultRows);
+  const [form, setForm] = useState(defaultForm);
   const [name, setName] = useState("Inflación anual");
   const [editingId, setEditingId] = useState("");
+  const [editingYear, setEditingYear] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
   const [status, setStatus] = useState({ error: "", success: "" });
 
@@ -87,49 +88,55 @@ function AdjustmentsPage() {
 
   const inflationItem = useMemo(() => inflationItems.find((item) => item.isActive) || inflationItems[0], [inflationItems]);
 
-  const inflationHistoryRows = useMemo(
-    () =>
-      inflationItems.flatMap((item) =>
-        (item.factors || []).map((factor, index) => ({
-          key: `${item.id}-${factor.label}-${index}`,
-          adjustmentId: item.id,
-          year: factor.label,
-          rate: ((Number(factor.factor) - 1) * 100).toFixed(2),
-          isActive: item.isActive,
-          updatedAt: item.updatedAt || item.createdAt,
-        }))
-      )
-      .sort((a, b) => {
-        const yearDiff = getYearSortValue(a.year) - getYearSortValue(b.year);
-        if (yearDiff !== 0) return yearDiff;
-        return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-      }),
-    [inflationItems]
-  );
+  const inflationHistoryRows = useMemo(() => {
+    if (!inflationItem) return [];
+    const rows = factorsToRows(inflationItem.factors || []);
+    return rows.map((row) => ({
+      key: `${inflationItem.id}-${row.year}`,
+      adjustmentId: inflationItem.id,
+      year: row.year,
+      rate: row.rate,
+      isActive: inflationItem.isActive,
+      updatedAt: inflationItem.updatedAt || inflationItem.createdAt,
+    }));
+  }, [inflationItem]);
 
   useEffect(() => {
-    if (!inflationItem) {
-      setRows(defaultRows);
+    if (inflationItem) {
+      const inflationForm = adjustmentToForm(inflationItem);
+      setName(inflationForm.name);
+      setEditingId(inflationForm.id);
+    } else {
       setName("Inflación anual");
       setEditingId("");
-      return;
     }
-
-    const form = adjustmentToForm(inflationItem);
-    setRows(form.rows.length ? form.rows : defaultRows);
-    setName(form.name);
-    setEditingId(form.id);
   }, [inflationItem]);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setStatus({ error: "", success: "" });
 
+    const currentRows = inflationItem ? factorsToRows(inflationItem.factors || []) : [];
+    const normalizedYear = String(form.year).trim();
+    const duplicateYear = currentRows.find((row) => row.year === normalizedYear);
+    const isEditingSameYear = editingYear && editingYear === normalizedYear;
+
+    if (duplicateYear && !isEditingSameYear) {
+      setStatus({
+        error: `Ya existe una inflación guardada para el año ${normalizedYear}. Si deseas cambiarla, edita ese registro existente.`,
+        success: "",
+      });
+      return;
+    }
+
+    const withoutEdited = currentRows.filter((row) => row.year !== editingYear);
+    const mergedRows = [...withoutEdited, { year: normalizedYear, rate: form.rate }];
+
     const payload = {
       name,
       adjustmentType: "inflation",
       scopeType: "general",
-      factors: rowsToFactors(rows),
+      factors: rowsToFactors(mergedRows),
     };
 
     try {
@@ -138,6 +145,8 @@ function AdjustmentsPage() {
         body: JSON.stringify(payload),
       });
       await loadItems();
+      setForm(defaultForm);
+      setEditingYear("");
       setStatus({ error: "", success: "Inflación guardada correctamente." });
     } catch (submitError) {
       setStatus({ error: submitError.message, success: "" });
@@ -145,24 +154,38 @@ function AdjustmentsPage() {
   }
 
   async function handleDelete(row) {
-    const sameAdjustmentRows = inflationHistoryRows.filter((item) => item.adjustmentId === row.adjustmentId);
-    const isSingleYearSetting = sameAdjustmentRows.length === 1;
+    const isSingleYearSetting = inflationHistoryRows.length === 1;
     const confirmationMessage = isSingleYearSetting
       ? `¿Seguro que deseas eliminar la inflación ${row.year} con valor ${row.rate}%? Esta acción es permanente.`
-      : `¿Seguro que deseas eliminar la configuración que incluye ${row.year} (${row.rate}%)? Se eliminarán ${sameAdjustmentRows.length} años asociados. Esta acción es permanente.`;
+      : `¿Seguro que deseas eliminar solo el año ${row.year} con valor ${row.rate}%? Esta acción es permanente.`;
 
     if (!window.confirm(confirmationMessage)) return;
 
     try {
       setStatus({ error: "", success: "" });
-      await apiRequest(`/adjustments/${row.adjustmentId}`, { method: "DELETE" });
-
-      if (editingId === row.adjustmentId) {
-        setEditingId("");
-        setName("Inflación anual");
-        setRows(defaultRows);
+      if (isSingleYearSetting) {
+        await apiRequest(`/adjustments/${row.adjustmentId}`, { method: "DELETE" });
+        if (editingId === row.adjustmentId) {
+          setEditingId("");
+          setName("Inflación anual");
+        }
+      } else {
+        const remainingRows = inflationHistoryRows.filter((item) => item.year !== row.year).map((item) => ({ year: item.year, rate: item.rate }));
+        await apiRequest(`/adjustments/${row.adjustmentId}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            name,
+            adjustmentType: "inflation",
+            scopeType: "general",
+            factors: rowsToFactors(remainingRows),
+          }),
+        });
       }
 
+      if (editingYear === row.year) {
+        setForm(defaultForm);
+        setEditingYear("");
+      }
       await loadItems();
       setStatus({ error: "", success: `Registro ${row.year} (${row.rate}%) eliminado correctamente.` });
     } catch (deleteError) {
@@ -178,47 +201,27 @@ function AdjustmentsPage() {
       />
 
       <form className="card form-grid" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Nombre de la configuración</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} required />
-        </label>
-
         <div className="inflation-grid">
-          <div className="inflation-head">Año</div>
-          <div className="inflation-head">Inflación anual (%)</div>
-          {rows.map((row, index) => (
-            <div className="inflation-row" key={`row-${index}`}>
-              <input
-                value={row.year}
-                onChange={(event) =>
-                  setRows((prev) => prev.map((item, rowIndex) => (rowIndex === index ? { ...item, year: event.target.value } : item)))
-                }
-                placeholder="2026"
-              />
-              <input
-                value={row.rate}
-                onChange={(event) =>
-                  setRows((prev) => prev.map((item, rowIndex) => (rowIndex === index ? { ...item, rate: event.target.value } : item)))
-                }
-                placeholder="5.00"
-                type="number"
-                step="0.01"
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="button-row">
-          <button type="button" className="ghost-button" onClick={() => setRows((prev) => [...prev, { year: "", rate: "" }])}>
-            Agregar año
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => setRows((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev))}
-          >
-            Quitar último
-          </button>
+          <label className="field">
+            <span>Año</span>
+            <input
+              value={form.year}
+              onChange={(event) => setForm((prev) => ({ ...prev, year: event.target.value }))}
+              placeholder="2026"
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Inflación anual (%)</span>
+            <input
+              value={form.rate}
+              onChange={(event) => setForm((prev) => ({ ...prev, rate: event.target.value }))}
+              placeholder="5.00"
+              type="number"
+              step="0.01"
+              required
+            />
+          </label>
         </div>
 
         <div className="alert">
@@ -229,9 +232,22 @@ function AdjustmentsPage() {
         {status.error ? <div className="alert error">{status.error}</div> : null}
         {status.success ? <div className="alert">{status.success}</div> : null}
 
-        <button type="submit" className="primary-button">
-          Guardar inflación
-        </button>
+        <div className="button-row">
+          <button type="submit" className="primary-button">
+            {editingYear ? "Actualizar inflación" : "Guardar inflación"}
+          </button>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => {
+              setForm(defaultForm);
+              setEditingYear("");
+              setStatus({ error: "", success: "" });
+            }}
+          >
+            Limpiar formulario
+          </button>
+        </div>
       </form>
 
       <div className="card form-grid">
@@ -273,10 +289,11 @@ function AdjustmentsPage() {
                         onEdit={() => {
                           const selected = inflationItems.find((item) => item.id === row.adjustmentId);
                           if (!selected) return;
-                          const form = adjustmentToForm(selected);
-                          setEditingId(form.id);
-                          setName(form.name);
-                          setRows(form.rows.length ? form.rows : defaultRows);
+                          const selectedForm = adjustmentToForm(selected);
+                          setEditingId(selectedForm.id);
+                          setName(selectedForm.name);
+                          setForm({ year: String(row.year), rate: String(row.rate) });
+                          setEditingYear(String(row.year));
                           setStatus({ error: "", success: "" });
                         }}
                         onDelete={() => handleDelete(row)}
