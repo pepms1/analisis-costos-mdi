@@ -1,6 +1,11 @@
 import { ImportSession } from "../models/ImportSession.js";
 import { ImportRow } from "../models/ImportRow.js";
 import { ImportRowDecision } from "../models/ImportRowDecision.js";
+import { ImportRowSuggestion } from "../models/ImportRowSuggestion.js";
+import { Concept } from "../models/Concept.js";
+import { PriceRecord } from "../models/PriceRecord.js";
+import { Supplier } from "../models/Supplier.js";
+import { Category } from "../models/Category.js";
 import { AppError } from "../utils/AppError.js";
 import {
   getWorkbookPreview,
@@ -259,6 +264,100 @@ function toDisplayValue(value) {
   return String(value).trim();
 }
 
+function toSafeNumber(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
+function getTokenSet(text = "") {
+  return new Set(
+    normalizeText(text)
+      .normalized.split(" ")
+      .map((token) => token.trim())
+      .filter(Boolean)
+  );
+}
+
+function getConceptSimilarity(source = "", target = "") {
+  const normalizedSource = normalizeText(source).normalized;
+  const normalizedTarget = normalizeText(target).normalized;
+
+  if (!normalizedSource || !normalizedTarget) return 0;
+  if (normalizedSource === normalizedTarget) return 1;
+  if (normalizedSource.includes(normalizedTarget) || normalizedTarget.includes(normalizedSource)) return 0.9;
+
+  const sourceTokens = getTokenSet(normalizedSource);
+  const targetTokens = getTokenSet(normalizedTarget);
+
+  if (!sourceTokens.size || !targetTokens.size) return 0;
+
+  let overlap = 0;
+  sourceTokens.forEach((token) => {
+    if (targetTokens.has(token)) overlap += 1;
+  });
+
+  const union = new Set([...sourceTokens, ...targetTokens]).size || 1;
+  return Math.min(1, overlap / union);
+}
+
+function getRecencyScore(priceDate) {
+  if (!priceDate) return 0;
+  const date = new Date(priceDate);
+  if (Number.isNaN(date.getTime())) return 0;
+
+  const now = new Date();
+  const ageInDays = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+
+  if (ageInDays <= 90) return 1;
+  if (ageInDays <= 365) return 0.75;
+  if (ageInDays <= 730) return 0.5;
+  return 0.2;
+}
+
+function getSupplierScore(rowSupplier = "", candidateSupplierName = "") {
+  const normalizedRowSupplier = normalizeText(rowSupplier).normalized;
+  const normalizedCandidateSupplier = normalizeText(candidateSupplierName).normalized;
+
+  if (!normalizedRowSupplier || !normalizedCandidateSupplier) return 0;
+  if (normalizedRowSupplier === normalizedCandidateSupplier) return 1;
+  if (
+    normalizedRowSupplier.includes(normalizedCandidateSupplier) ||
+    normalizedCandidateSupplier.includes(normalizedRowSupplier)
+  ) {
+    return 0.8;
+  }
+
+  const tokenScore = getConceptSimilarity(normalizedRowSupplier, normalizedCandidateSupplier);
+  return tokenScore >= 0.5 ? 0.6 : 0;
+}
+
+function getUnitScore(rowUnit = "", candidateUnit = "") {
+  const rowNormalized = normalizeUnit(rowUnit).normalized;
+  const candidateNormalized = normalizeUnit(candidateUnit).normalized;
+
+  if (!rowNormalized || !candidateNormalized) return 0;
+  if (rowNormalized === candidateNormalized) return 1;
+  return 0;
+}
+
+function getPriceCoherenceScore(rowPrice, candidatePrice) {
+  const parsedRowPrice = toSafeNumber(rowPrice);
+  const parsedCandidatePrice = toSafeNumber(candidatePrice);
+
+  if (!parsedRowPrice || !parsedCandidatePrice || parsedCandidatePrice <= 0) return 0.5;
+
+  const relativeDiff = Math.abs(parsedRowPrice - parsedCandidatePrice) / parsedCandidatePrice;
+  if (relativeDiff <= 0.1) return 1;
+  if (relativeDiff <= 0.25) return 0.7;
+  if (relativeDiff <= 0.5) return 0.4;
+  return 0;
+}
+
+function classifyConfidence(score) {
+  if (score >= 0.85) return "high";
+  if (score >= 0.65) return "medium";
+  return "low";
+}
+
 function buildParsedRow({ session, rowEntry, mapping }) {
   const rowValues = rowEntry.values || [];
   const rawConcept = getMappedCell(rowValues, mapping.concept);
@@ -439,6 +538,281 @@ export async function parseImportSessionRows(req, res) {
   });
 }
 
+function buildSuggestionPayload({ row, candidate, conceptById, supplierById, categoryById, frequentCategoryByConcept }) {
+  const reasons = [];
+
+  if (candidate.conceptSimilarity >= 1) {
+    reasons.push("Coincidencia exacta normalizada con histórico");
+  } else if (candidate.conceptSimilarity >= 0.7) {
+    reasons.push("Coincidencia parcial razonable de concepto");
+  }
+
+  if (candidate.unitScore >= 1) reasons.push("Unidad compatible");
+  if (candidate.supplierScore >= 1) reasons.push("Mismo proveedor");
+  else if (candidate.supplierScore >= 0.6) reasons.push("Proveedor similar");
+  if (candidate.recencyScore >= 0.75) reasons.push("Histórico reciente");
+  if (candidate.priceScore >= 0.7) reasons.push("Precio importado dentro de rango cercano");
+
+  const frequentCategory = frequentCategoryByConcept.get(String(candidate.priceRecord.conceptId || ""));
+  if (frequentCategory && String(frequentCategory.categoryId) === String(candidate.priceRecord.categoryId)) {
+    reasons.push("Categoría frecuente asociada al concepto");
+  }
+
+  const score = Math.max(
+    0,
+    Math.min(
+      1,
+      candidate.conceptSimilarity * 0.5 +
+        candidate.unitScore * 0.15 +
+        candidate.supplierScore * 0.15 +
+        candidate.recencyScore * 0.1 +
+        candidate.priceScore * 0.1
+    )
+  );
+
+  const suggestedCategory = categoryById.get(String(candidate.priceRecord.categoryId));
+  const suggestedSupplier = supplierById.get(String(candidate.priceRecord.supplierId || ""));
+  const suggestedConcept = conceptById.get(String(candidate.priceRecord.conceptId || ""));
+
+  return {
+    importRowId: row._id,
+    suggestedCategoryId: candidate.priceRecord.categoryId || null,
+    suggestedSupplierId: candidate.priceRecord.supplierId || null,
+    suggestedCost: candidate.priceRecord.unitPrice || candidate.priceRecord.normalizedPrice || candidate.priceRecord.totalPrice || null,
+    suggestedDate: candidate.priceRecord.priceDate || null,
+    suggestedHistoricId: candidate.priceRecord._id || null,
+    suggestedWorkId: candidate.priceRecord.projectId || null,
+    score,
+    reasonJson: {
+      confidenceLabel: classifyConfidence(score),
+      reasons: reasons.length ? reasons : ["Sin coincidencia confiable"],
+      breakdown: {
+        concept: Number(candidate.conceptSimilarity.toFixed(3)),
+        unit: Number(candidate.unitScore.toFixed(3)),
+        supplier: Number(candidate.supplierScore.toFixed(3)),
+        recency: Number(candidate.recencyScore.toFixed(3)),
+        coherence: Number(candidate.priceScore.toFixed(3)),
+      },
+      matched: {
+        conceptName: suggestedConcept?.name || "",
+        categoryName: suggestedCategory?.name || "",
+        supplierName: suggestedSupplier?.name || "",
+      },
+    },
+  };
+}
+
+export async function generateImportSessionSuggestions(req, res) {
+  const session = await ImportSession.findById(req.params.id);
+
+  if (!session) {
+    throw new AppError("Import session not found", 404);
+  }
+
+  const rows = await ImportRow.find({ sessionId: session.id }).lean();
+  if (!rows.length) {
+    throw new AppError("La sesión no tiene filas parseadas en staging", 400);
+  }
+
+  const candidateRows = rows.filter((row) => ["parsed", "warning"].includes(row.parseStatus));
+  const rowsById = new Map(rows.map((row) => [String(row._id), row]));
+
+  const conceptDocs = await Concept.find({ isActive: true }).select("_id name normalizedName categoryId primaryUnit").lean();
+  const supplierDocs = await Supplier.find({ isActive: true }).select("_id name").lean();
+  const categoryDocs = await Category.find({ isActive: true }).select("_id name").lean();
+
+  const conceptById = new Map(conceptDocs.map((item) => [String(item._id), item]));
+  const supplierById = new Map(supplierDocs.map((item) => [String(item._id), item]));
+  const categoryById = new Map(categoryDocs.map((item) => [String(item._id), item]));
+
+  const conceptNormalizedMap = new Map(conceptDocs.map((concept) => [concept.normalizedName, concept]));
+
+  const frequencyAgg = await PriceRecord.aggregate([
+    { $group: { _id: { conceptId: "$conceptId", categoryId: "$categoryId" }, count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+  ]);
+
+  const frequentCategoryByConcept = new Map();
+  frequencyAgg.forEach((item) => {
+    const conceptId = String(item._id?.conceptId || "");
+    if (!conceptId || frequentCategoryByConcept.has(conceptId)) return;
+    frequentCategoryByConcept.set(conceptId, {
+      categoryId: item._id?.categoryId,
+      count: item.count,
+    });
+  });
+
+  const priceRecords = await PriceRecord.find({})
+    .sort({ priceDate: -1 })
+    .select("_id conceptId categoryId supplierId projectId priceDate unit unitPrice normalizedPrice totalPrice")
+    .lean();
+
+  const suggestionDocs = [];
+  const rowUpdates = [];
+  const counters = { high: 0, medium: 0, low: 0, noMatch: 0 };
+
+  rows.forEach((row) => {
+    if (row.parseStatus === "error") {
+      rowUpdates.push({
+        updateOne: {
+          filter: { _id: row._id },
+          update: { $set: { matchStatus: "pending", confidenceScore: 0 } },
+        },
+      });
+      counters.noMatch += 1;
+      return;
+    }
+
+    if (!["parsed", "warning"].includes(row.parseStatus) || !row.normalizedConcept) {
+      rowUpdates.push({
+        updateOne: {
+          filter: { _id: row._id },
+          update: { $set: { matchStatus: "pending", confidenceScore: 0 } },
+        },
+      });
+      counters.noMatch += 1;
+      return;
+    }
+
+    const rowUnit = row.rawJson?.normalized?.unit || row.rawUnit;
+    const rowSupplier = row.rawSupplier || "";
+    const rowUnitPrice = row.rawJson?.normalized?.unitPrice;
+    const conceptFromCatalog = conceptNormalizedMap.get(row.normalizedConcept);
+
+    const rankedCandidates = priceRecords
+      .map((priceRecord) => {
+        const concept = conceptById.get(String(priceRecord.conceptId || ""));
+        const supplier = supplierById.get(String(priceRecord.supplierId || ""));
+
+        const conceptSimilarity = conceptFromCatalog?._id && String(conceptFromCatalog._id) === String(concept?._id)
+          ? 1
+          : getConceptSimilarity(row.normalizedConcept, concept?.normalizedName || "");
+
+        const unitScore = getUnitScore(rowUnit, priceRecord.unit || concept?.primaryUnit || "");
+        const supplierScore = getSupplierScore(rowSupplier, supplier?.name || "");
+        const recencyScore = getRecencyScore(priceRecord.priceDate);
+        const priceScore = getPriceCoherenceScore(rowUnitPrice, priceRecord.unitPrice || priceRecord.normalizedPrice || priceRecord.totalPrice);
+
+        const finalScore =
+          conceptSimilarity * 0.5 + unitScore * 0.15 + supplierScore * 0.15 + recencyScore * 0.1 + priceScore * 0.1;
+
+        return {
+          priceRecord,
+          conceptSimilarity,
+          unitScore,
+          supplierScore,
+          recencyScore,
+          priceScore,
+          finalScore,
+        };
+      })
+      .filter((candidate) => candidate.conceptSimilarity >= 0.35)
+      .sort((a, b) => b.finalScore - a.finalScore);
+
+    const best = rankedCandidates[0];
+
+    if (!best || best.finalScore < 0.5) {
+      suggestionDocs.push({
+        importRowId: row._id,
+        score: 0,
+        reasonJson: {
+          confidenceLabel: "low",
+          reasons: ["Sin coincidencia confiable"],
+          breakdown: { concept: 0, unit: 0, supplier: 0, recency: 0, coherence: 0 },
+        },
+      });
+      rowUpdates.push({
+        updateOne: {
+          filter: { _id: row._id },
+          update: { $set: { matchStatus: "pending", confidenceScore: 0 } },
+        },
+      });
+      counters.noMatch += 1;
+      return;
+    }
+
+    const suggestion = buildSuggestionPayload({
+      row,
+      candidate: best,
+      conceptById,
+      supplierById,
+      categoryById,
+      frequentCategoryByConcept,
+    });
+
+    suggestionDocs.push(suggestion);
+
+    const confidenceLabel = classifyConfidence(suggestion.score);
+    if (confidenceLabel === "high") counters.high += 1;
+    else if (confidenceLabel === "medium") counters.medium += 1;
+    else counters.low += 1;
+
+    rowUpdates.push({
+      updateOne: {
+        filter: { _id: row._id },
+        update: {
+          $set: {
+            matchStatus: "suggested",
+            confidenceScore: suggestion.score,
+          },
+        },
+      },
+    });
+  });
+
+  const rowIds = rows.map((row) => row._id);
+  await ImportRowSuggestion.deleteMany({ importRowId: { $in: rowIds } });
+  if (suggestionDocs.length) {
+    await ImportRowSuggestion.insertMany(suggestionDocs, { ordered: false });
+  }
+  if (rowUpdates.length) {
+    await ImportRow.bulkWrite(rowUpdates);
+  }
+
+  session.status = "reviewing";
+  session.optionsJson = {
+    ...(session.optionsJson || {}),
+    suggestionSummary: {
+      totalRows: rows.length,
+      candidateRows: candidateRows.length,
+      high: counters.high,
+      medium: counters.medium,
+      low: counters.low,
+      noMatch: counters.noMatch,
+    },
+    lastSuggestedAt: new Date().toISOString(),
+  };
+  await session.save();
+
+  const createdSuggestions = await ImportRowSuggestion.find({ importRowId: { $in: rowIds } })
+    .sort({ score: -1 })
+    .limit(10)
+    .lean();
+
+  res.json({
+    summary: {
+      totalRows: rows.length,
+      candidateRows: candidateRows.length,
+      high: counters.high,
+      medium: counters.medium,
+      low: counters.low,
+      noMatch: counters.noMatch,
+    },
+    sample: createdSuggestions.map((item) => {
+      const row = rowsById.get(String(item.importRowId));
+      return {
+        importRowId: item.importRowId,
+        sheetRowNumber: row?.sheetRowNumber,
+        concept: row?.rawConcept,
+        score: item.score,
+        confidenceLabel: item.reasonJson?.confidenceLabel || classifyConfidence(item.score || 0),
+        reasons: item.reasonJson?.reasons || [],
+      };
+    }),
+    item: serializeSession(session),
+  });
+}
+
 export async function listImportRows(req, res) {
   const session = await ImportSession.findById(req.params.id).select("_id");
 
@@ -454,6 +828,14 @@ export async function listImportRows(req, res) {
   }
 
   const items = await ImportRow.find(query).sort({ sheetRowNumber: 1, createdAt: 1 }).lean();
+  const suggestionItems = await ImportRowSuggestion.find({ importRowId: { $in: items.map((row) => row._id) } })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const suggestionByRowId = new Map();
+  suggestionItems.forEach((suggestion) => {
+    suggestionByRowId.set(String(suggestion.importRowId), suggestion);
+  });
 
   res.json({
     items: items.map((row) => ({
@@ -473,6 +855,19 @@ export async function listImportRows(req, res) {
       parseStatus: row.parseStatus,
       matchStatus: row.matchStatus,
       confidenceScore: row.confidenceScore,
+      suggestion: suggestionByRowId.has(String(row._id))
+        ? {
+            id: suggestionByRowId.get(String(row._id))._id.toString(),
+            suggestedCategoryId: suggestionByRowId.get(String(row._id)).suggestedCategoryId,
+            suggestedSupplierId: suggestionByRowId.get(String(row._id)).suggestedSupplierId,
+            suggestedCost: suggestionByRowId.get(String(row._id)).suggestedCost,
+            suggestedDate: suggestionByRowId.get(String(row._id)).suggestedDate,
+            suggestedHistoricId: suggestionByRowId.get(String(row._id)).suggestedHistoricId,
+            suggestedWorkId: suggestionByRowId.get(String(row._id)).suggestedWorkId,
+            score: suggestionByRowId.get(String(row._id)).score,
+            reasonJson: suggestionByRowId.get(String(row._id)).reasonJson,
+          }
+        : null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     })),

@@ -44,7 +44,9 @@ function ExcelImportPage() {
   const [parsing, setParsing] = useState(false);
   const [rowsLoading, setRowsLoading] = useState(false);
   const [parseSummary, setParseSummary] = useState(null);
+  const [suggestionSummary, setSuggestionSummary] = useState(null);
   const [parseRows, setParseRows] = useState([]);
+  const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -88,6 +90,7 @@ function ExcelImportPage() {
     setError("");
     setSuccess("");
     setParseSummary(null);
+    setSuggestionSummary(null);
     setParseRows([]);
 
     try {
@@ -198,6 +201,7 @@ function ExcelImportPage() {
     try {
       const response = await apiRequest(`/import-sessions/${session.id}/parse`, { method: "POST" });
       setParseSummary(response.summary || null);
+      setSuggestionSummary(null);
       setSession(response.item || session);
       await loadParsedRows(session.id);
       setSuccess("Parseo ejecutado. Se regeneraron las filas staging de esta sesión.");
@@ -205,6 +209,29 @@ function ExcelImportPage() {
       setError(parseError.message || "No se pudo procesar la sesión");
     } finally {
       setParsing(false);
+    }
+  }
+
+  async function handleGenerateSuggestions() {
+    if (!session?.id) {
+      setError("No hay sesión activa para generar sugerencias.");
+      return;
+    }
+
+    setSuggesting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await apiRequest(`/import-sessions/${session.id}/suggestions`, { method: "POST" });
+      setSuggestionSummary(response.summary || null);
+      setSession(response.item || session);
+      await loadParsedRows(session.id);
+      setSuccess("Sugerencias generadas y guardadas en staging para revisión.");
+    } catch (suggestError) {
+      setError(suggestError.message || "No se pudieron generar sugerencias");
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -322,6 +349,14 @@ function ExcelImportPage() {
           >
             {parsing ? "Procesando..." : "Procesar filas"}
           </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleGenerateSuggestions}
+            disabled={suggesting || parsing || saving || loading || !session?.id || !parseRows.length}
+          >
+            {suggesting ? "Generando..." : "Generar sugerencias"}
+          </button>
           <p className="muted">Estado sesión: {session?.status || "sin sesión"}</p>
         </div>
 
@@ -334,6 +369,19 @@ function ExcelImportPage() {
               <p>Ignoradas: <strong>{parseSummary.totalIgnored}</strong></p>
               <p>Warnings: <strong>{parseSummary.totalWarnings}</strong></p>
               <p>Errores: <strong>{parseSummary.totalErrors}</strong></p>
+            </div>
+          </section>
+        ) : null}
+
+        {suggestionSummary ? (
+          <section className="import-panel card-subtle">
+            <h3>Resumen de sugerencias</h3>
+            <div className="parse-summary-grid">
+              <p>Alta: <strong>{suggestionSummary.high}</strong></p>
+              <p>Media: <strong>{suggestionSummary.medium}</strong></p>
+              <p>Baja: <strong>{suggestionSummary.low}</strong></p>
+              <p>Sin match: <strong>{suggestionSummary.noMatch}</strong></p>
+              <p>Candidatas: <strong>{suggestionSummary.candidateRows}</strong></p>
             </div>
           </section>
         ) : null}
@@ -355,6 +403,11 @@ function ExcelImportPage() {
                   <th>Importe</th>
                   <th>Proveedor</th>
                   <th>Fecha</th>
+                  <th>Categoría sugerida</th>
+                  <th>Proveedor sugerido</th>
+                  <th>Costo sugerido</th>
+                  <th>Confianza</th>
+                  <th>Razones</th>
                   <th>Estado</th>
                 </tr>
               </thead>
@@ -369,6 +422,21 @@ function ExcelImportPage() {
                     <td>{row.rawAmount || row.rawJson?.normalized?.amount || "—"}</td>
                     <td>{row.rawSupplier || "—"}</td>
                     <td>{row.rawDate || row.rawJson?.normalized?.dateIso || "—"}</td>
+                    <td>{row.suggestion?.reasonJson?.matched?.categoryName || "—"}</td>
+                    <td>{row.suggestion?.reasonJson?.matched?.supplierName || "—"}</td>
+                    <td>{row.suggestion?.suggestedCost ?? "—"}</td>
+                    <td>
+                      {row.suggestion ? (
+                        <span className={`status-chip confidence-chip-${row.suggestion?.reasonJson?.confidenceLabel || "low"}`}>
+                          {(row.suggestion?.score || 0).toFixed(2)} · {row.suggestion?.reasonJson?.confidenceLabel || "low"}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="cell-wrap">
+                      {row.suggestion?.reasonJson?.reasons?.slice(0, 2).join(", ") || "Sin sugerencia"}
+                    </td>
                     <td>{renderStatusBadge(row.parseStatus)}</td>
                   </tr>
                 ))}
