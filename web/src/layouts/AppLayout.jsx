@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
@@ -21,7 +22,7 @@ const adminLinks = [
   { to: "/dashboard", label: "Resumen admin", permission: PERMISSIONS.AUDIT_VIEW },
 ];
 
-function LinkGroup({ title, links }) {
+function LinkGroup({ title, links, onNavigate }) {
   return (
     <div className="nav-group">
       <p className="eyebrow nav-group-title">{title}</p>
@@ -31,6 +32,7 @@ function LinkGroup({ title, links }) {
             key={link.to}
             to={link.to}
             className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+            onClick={onNavigate}
           >
             {link.label}
           </NavLink>
@@ -42,10 +44,39 @@ function LinkGroup({ title, links }) {
 
 function AppLayout() {
   const { user, logout, hasPermission } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) {
+      document.body.style.overflow = "";
+      return undefined;
+    }
+
+    document.body.style.overflow = "hidden";
+    const onEscape = (event) => {
+      if (event.key === "Escape") {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onEscape);
+
+    return () => {
+      window.removeEventListener("keydown", onEscape);
+      document.body.style.overflow = "";
+    };
+  }, [isMobileMenuOpen]);
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <button
+        type="button"
+        className="mobile-menu-overlay"
+        aria-label="Cerrar menú"
+        aria-hidden={!isMobileMenuOpen}
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+
+      <aside className={`sidebar ${isMobileMenuOpen ? "is-open" : ""}`}>
         <div>
           <div className="brand-badge">MDI</div>
           <h1>Analisis de Costos Grupo MDI</h1>
@@ -53,15 +84,36 @@ function AppLayout() {
         </div>
 
         <nav className="nav-groups">
-          <LinkGroup title="Principal" links={primaryLinks.filter((link) => hasPermission(link.permission))} />
-          <LinkGroup title="Catálogos" links={catalogLinks.filter((link) => hasPermission(link.permission))} />
-          <LinkGroup title="Administración" links={adminLinks.filter((link) => hasPermission(link.permission))} />
+          <LinkGroup
+            title="Principal"
+            links={primaryLinks.filter((link) => hasPermission(link.permission))}
+            onNavigate={() => setIsMobileMenuOpen(false)}
+          />
+          <LinkGroup
+            title="Catálogos"
+            links={catalogLinks.filter((link) => hasPermission(link.permission))}
+            onNavigate={() => setIsMobileMenuOpen(false)}
+          />
+          <LinkGroup
+            title="Administración"
+            links={adminLinks.filter((link) => hasPermission(link.permission))}
+            onNavigate={() => setIsMobileMenuOpen(false)}
+          />
         </nav>
       </aside>
 
       <main className="main-panel">
         <header className="topbar">
-          <div>
+          <div className="topbar-main">
+            <button
+              type="button"
+              className="mobile-menu-button"
+              aria-label={isMobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
+              aria-expanded={isMobileMenuOpen}
+              onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+            >
+              ☰ Menú
+            </button>
             <p className="eyebrow">Sesión activa</p>
             <h2>{user?.name}</h2>
             <p className="muted">
