@@ -20,16 +20,17 @@ function UsersPage() {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [error, setError] = useState("");
 
   async function loadUsers() {
-    const data = await apiRequest("/users");
+    const data = await apiRequest(`/users?status=${statusFilter}`);
     setUsers(data.items);
   }
 
   useEffect(() => {
     loadUsers().catch(() => setUsers([]));
-  }, []);
+  }, [statusFilter]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -58,12 +59,21 @@ function UsersPage() {
     }
   }
 
-  async function handleDelete(item) {
-    if (!window.confirm(`¿Seguro que deseas eliminar ${item.name}? Esta accion desactiva el registro.`)) return;
+  async function handleToggleActive(item) {
+    const shouldActivate = !item.isActive;
+    if (
+      !window.confirm(
+        shouldActivate
+          ? `¿Quieres reactivar este registro (${item.name})?`
+          : `¿Quieres desactivar este registro (${item.name})?`
+      )
+    ) return;
 
     try {
       setError("");
-      await apiRequest(`/users/${item.id}`, { method: "DELETE" });
+      await apiRequest(shouldActivate ? `/users/${item.id}/reactivate` : `/users/${item.id}`, {
+        method: shouldActivate ? "PATCH" : "DELETE",
+      });
       if (editingId === item.id) {
         setEditingId("");
         setForm(initialForm);
@@ -146,7 +156,7 @@ function UsersPage() {
             { key: "name", label: "Nombre" },
             { key: "email", label: "Email" },
             { key: "role", label: "Rol" },
-            { key: "isActive", label: "Activo" },
+            { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
             { key: "createdAt", label: "Alta", render: (value) => formatDate(value) },
             ...(canManage
               ? [
@@ -165,8 +175,9 @@ function UsersPage() {
                           });
                           setError("");
                         }}
-                        onDelete={() => handleDelete(row)}
-                        disableDelete={!row.isActive || row.id === user?.id}
+                        onToggleActive={() => handleToggleActive(row)}
+                        isActive={row.isActive}
+                        disableToggle={row.id === user?.id}
                       />
                     ),
                   },
@@ -175,6 +186,16 @@ function UsersPage() {
           ]}
           rows={users}
         />
+      </div>
+      <div className="card form-grid">
+        <label className="field">
+          <span>Visibilidad</span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="active">Solo activos</option>
+            <option value="inactive">Solo inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </label>
       </div>
     </section>
   );

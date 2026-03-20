@@ -7,6 +7,13 @@ function escapeRegExp(value) {
 
 export async function listProjects(req, res) {
   const query = {};
+  const status = req.query.status;
+
+  if (status === "active") {
+    query.isActive = true;
+  } else if (status === "inactive") {
+    query.isActive = false;
+  }
 
   if (req.query.activeOnly === "1") {
     query.isActive = true;
@@ -126,6 +133,35 @@ export async function deactivateProject(req, res) {
     req.params.id,
     {
       isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Project not found", 404);
+  }
+
+  res.json({
+    item: {
+      id: item.id,
+      name: item.name,
+      code: item.code,
+      clientName: item.clientName,
+      location: item.location,
+      notes: item.notes,
+      isActive: item.isActive,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    },
+  });
+}
+
+export async function reactivateProject(req, res) {
+  const item = await Project.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: true,
       updatedBy: req.user.id,
     },
     { new: true, runValidators: true }

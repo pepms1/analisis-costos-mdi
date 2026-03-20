@@ -21,16 +21,17 @@ function ProjectsPage() {
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [error, setError] = useState("");
 
   async function loadItems() {
-    const data = await apiRequest("/projects");
+    const data = await apiRequest(`/projects?status=${statusFilter}`);
     setItems(data.items);
   }
 
   useEffect(() => {
     loadItems().catch(() => setItems([]));
-  }, []);
+  }, [statusFilter]);
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -66,12 +67,21 @@ function ProjectsPage() {
 
 
 
-  async function handleDelete(item) {
-    if (!window.confirm(`¿Seguro que deseas eliminar ${item.name}? Esta accion desactiva el registro.`)) return;
+  async function handleToggleActive(item) {
+    const shouldActivate = !item.isActive;
+    if (
+      !window.confirm(
+        shouldActivate
+          ? `¿Quieres reactivar este registro (${item.name})?`
+          : `¿Quieres desactivar este registro (${item.name})?`
+      )
+    ) return;
 
     try {
       setError("");
-      await apiRequest(`/projects/${item.id}`, { method: "DELETE" });
+      await apiRequest(shouldActivate ? `/projects/${item.id}/reactivate` : `/projects/${item.id}`, {
+        method: shouldActivate ? "PATCH" : "DELETE",
+      });
       if (editingId === item.id) {
         resetForm();
       }
@@ -171,6 +181,14 @@ function ProjectsPage() {
               <span>Buscar obra</span>
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre, codigo o cliente" />
             </label>
+            <label className="field">
+              <span>Visibilidad</span>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="active">Solo activas</option>
+                <option value="inactive">Solo inactivas</option>
+                <option value="all">Todas</option>
+              </select>
+            </label>
           </div>
 
           <DataTable
@@ -179,7 +197,7 @@ function ProjectsPage() {
               { key: "code", label: "Codigo" },
               { key: "clientName", label: "Cliente" },
               { key: "location", label: "Ubicacion" },
-              { key: "isActive", label: "Activa" },
+              { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activa" : "Inactiva") },
               { key: "createdAt", label: "Alta", render: (value) => formatDate(value) },
               ...(canManageProjects
                 ? [
@@ -189,8 +207,8 @@ function ProjectsPage() {
                       render: (_value, row) => (
                         <CrudActions
                           onEdit={() => handleEdit(row)}
-                          onDelete={() => handleDelete(row)}
-                          disableDelete={!row.isActive}
+                          onToggleActive={() => handleToggleActive(row)}
+                          isActive={row.isActive}
                         />
                       ),
                     },

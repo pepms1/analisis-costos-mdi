@@ -23,10 +23,14 @@ function ConceptsPage() {
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [error, setError] = useState("");
 
   async function loadPage() {
-    const [conceptsData, categoriesData] = await Promise.all([apiRequest("/concepts"), apiRequest("/categories")]);
+    const [conceptsData, categoriesData] = await Promise.all([
+      apiRequest(`/concepts?status=${statusFilter}`),
+      apiRequest("/categories"),
+    ]);
     setItems(conceptsData.items);
     setCategories(categoriesData.items);
   }
@@ -36,7 +40,7 @@ function ConceptsPage() {
       setItems([]);
       setCategories([]);
     });
-  }, []);
+  }, [statusFilter]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -68,12 +72,21 @@ function ConceptsPage() {
     }
   }
 
-  async function handleDelete(item) {
-    if (!window.confirm(`¿Seguro que deseas eliminar ${item.name}? Esta accion desactiva el registro.`)) return;
+  async function handleToggleActive(item) {
+    const shouldActivate = !item.isActive;
+    if (
+      !window.confirm(
+        shouldActivate
+          ? `¿Quieres reactivar este registro (${item.name})?`
+          : `¿Quieres desactivar este registro (${item.name})?`
+      )
+    ) return;
 
     try {
       setError("");
-      await apiRequest(`/concepts/${item.id}`, { method: "DELETE" });
+      await apiRequest(shouldActivate ? `/concepts/${item.id}/reactivate` : `/concepts/${item.id}`, {
+        method: shouldActivate ? "PATCH" : "DELETE",
+      });
       if (editingId === item.id) {
         setEditingId("");
         setForm(initialForm);
@@ -202,6 +215,7 @@ function ConceptsPage() {
             { key: "calculationType", label: "Calculo" },
             { key: "primaryUnit", label: "Unidad" },
             { key: "requiresDimensions", label: "Dimensiones" },
+            { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
             ...(canManage
               ? [
                   {
@@ -210,8 +224,8 @@ function ConceptsPage() {
                     render: (_value, row) => (
                       <CrudActions
                         onEdit={() => handleEdit(row)}
-                        onDelete={() => handleDelete(row)}
-                        disableDelete={!row.isActive}
+                        onToggleActive={() => handleToggleActive(row)}
+                        isActive={row.isActive}
                       />
                     ),
                   },
@@ -220,6 +234,16 @@ function ConceptsPage() {
           ]}
           rows={items}
         />
+      </div>
+      <div className="card form-grid">
+        <label className="field">
+          <span>Visibilidad</span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="active">Solo activos</option>
+            <option value="inactive">Solo inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </label>
       </div>
     </section>
   );

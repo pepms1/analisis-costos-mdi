@@ -13,8 +13,12 @@ function toPayload(item) {
   };
 }
 
-export async function listUsers(_req, res) {
-  const items = await User.find().select("-passwordHash").sort({ createdAt: -1 });
+export async function listUsers(req, res) {
+  const status = req.query.status || "active";
+  const query = {};
+  if (status === "active") query.isActive = true;
+  if (status === "inactive") query.isActive = false;
+  const items = await User.find(query).select("-passwordHash").sort({ createdAt: -1 });
   res.json({ items: items.map(toPayload) });
 }
 
@@ -80,6 +84,20 @@ export async function deactivateUser(req, res) {
   const item = await User.findByIdAndUpdate(
     req.params.id,
     { isActive: false },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("User not found", 404);
+  }
+
+  res.json({ item: toPayload(item) });
+}
+
+export async function reactivateUser(req, res) {
+  const item = await User.findByIdAndUpdate(
+    req.params.id,
+    { isActive: true },
     { new: true, runValidators: true }
   );
 

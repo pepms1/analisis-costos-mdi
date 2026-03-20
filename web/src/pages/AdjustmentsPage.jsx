@@ -18,16 +18,17 @@ function AdjustmentsPage() {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [error, setError] = useState("");
 
   async function loadItems() {
-    const data = await apiRequest("/adjustments");
+    const data = await apiRequest(`/adjustments?status=${statusFilter}`);
     setItems(data.items);
   }
 
   useEffect(() => {
     loadItems().catch(() => setItems([]));
-  }, []);
+  }, [statusFilter]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -49,12 +50,21 @@ function AdjustmentsPage() {
     }
   }
 
-  async function handleDelete(item) {
-    if (!window.confirm(`¿Seguro que deseas eliminar ${item.name}? Esta accion desactiva el registro.`)) return;
+  async function handleToggleActive(item) {
+    const shouldActivate = !item.isActive;
+    if (
+      !window.confirm(
+        shouldActivate
+          ? `¿Quieres reactivar este registro (${item.name})?`
+          : `¿Quieres desactivar este registro (${item.name})?`
+      )
+    ) return;
 
     try {
       setError("");
-      await apiRequest(`/adjustments/${item.id}`, { method: "DELETE" });
+      await apiRequest(shouldActivate ? `/adjustments/${item.id}/reactivate` : `/adjustments/${item.id}`, {
+        method: shouldActivate ? "PATCH" : "DELETE",
+      });
       if (editingId === item.id) {
         setEditingId("");
         setForm(initialForm);
@@ -130,7 +140,7 @@ function AdjustmentsPage() {
             { key: "name", label: "Nombre" },
             { key: "adjustmentType", label: "Tipo" },
             { key: "scopeType", label: "Alcance" },
-            { key: "isActive", label: "Activo" },
+            { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
             ...(canManage
               ? [
                   {
@@ -148,8 +158,8 @@ function AdjustmentsPage() {
                           });
                           setError("");
                         }}
-                        onDelete={() => handleDelete(row)}
-                        disableDelete={!row.isActive}
+                        onToggleActive={() => handleToggleActive(row)}
+                        isActive={row.isActive}
                       />
                     ),
                   },
@@ -158,6 +168,16 @@ function AdjustmentsPage() {
           ]}
           rows={items}
         />
+      </div>
+      <div className="card form-grid">
+        <label className="field">
+          <span>Visibilidad</span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="active">Solo activos</option>
+            <option value="inactive">Solo inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </label>
       </div>
     </section>
   );
