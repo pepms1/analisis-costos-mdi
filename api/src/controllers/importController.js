@@ -18,7 +18,9 @@ import {
   storeImportFile,
 } from "../services/importWorkbookService.js";
 import {
+  detectEmbeddedDimensions,
   getMappedCell,
+  inferApplicationUnitSuggestion,
   isLikelySummaryRow,
   isRowCompletelyEmpty,
   normalizeText,
@@ -378,6 +380,8 @@ function buildParsedRow({ session, rowEntry, mapping }) {
   const unitPrice = parseFlexibleNumber(rawUnitPrice);
   const amount = parseFlexibleNumber(rawAmount);
   const parsedDate = parseFlexibleDate(rawDate);
+  const { detectedDimensions, applicationSuggestion } = detectEmbeddedDimensions(`${rawConcept} ${conceptInfo.normalized}`);
+  const standaloneApplicationSuggestion = applicationSuggestion || inferApplicationUnitSuggestion(`${rawConcept} ${conceptInfo.normalized}`);
 
   const warnings = [];
   const errors = [];
@@ -414,6 +418,9 @@ function buildParsedRow({ session, rowEntry, mapping }) {
         supplier: normalizeText(rawSupplier).normalized,
         category: normalizeText(rawCategory).normalized,
         dateIso: parsedDate.iso,
+        detectedDimensions,
+        suggestedApplicationUnit: standaloneApplicationSuggestion?.suggestedApplicationUnit || null,
+        applicationSuggestion,
       },
       warnings,
       errors,
@@ -631,6 +638,7 @@ function serializeDecision(decision) {
     finalDate: decision.finalDate,
     finalWorkId: decision.finalWorkId,
     finalNotes: decision.finalNotes || "",
+    finalMeasurementsJson: decision.finalMeasurementsJson || null,
     savedHistoricId: decision.savedHistoricId,
     createdBy: decision.createdBy,
     createdAt: decision.createdAt,
@@ -664,6 +672,7 @@ function resolveFinalValues(row, suggestion, decision) {
       date: decision.finalDate || null,
       workId: decision.finalWorkId || null,
       notes: decision.finalNotes || "",
+      measurements: decision.finalMeasurementsJson || null,
     };
   }
 
@@ -677,6 +686,7 @@ function resolveFinalValues(row, suggestion, decision) {
       date: suggestion.suggestedDate || row.rawJson?.normalized?.dateIso || null,
       workId: suggestion.suggestedWorkId || null,
       notes: "",
+      measurements: null,
     };
   }
 
@@ -688,7 +698,13 @@ function resolveFinalValues(row, suggestion, decision) {
     cost: row.rawJson?.normalized?.unitPrice ?? null,
     date: row.rawJson?.normalized?.dateIso || null,
     workId: null,
-    notes: "",
+      notes: "",
+      measurements: row.rawJson?.normalized?.detectedDimensions
+        ? {
+            ...row.rawJson.normalized.detectedDimensions,
+            applicationUnit: row.rawJson?.normalized?.suggestedApplicationUnit || null,
+          }
+        : null,
   };
 }
 
@@ -1168,6 +1184,7 @@ async function upsertRowDecision({ rowId, payload, userId }) {
     finalDate: payload.finalDate ? new Date(payload.finalDate) : null,
     finalWorkId: payload.finalWorkId ?? null,
     finalNotes: payload.finalNotes || "",
+    finalMeasurementsJson: payload.finalMeasurementsJson ?? null,
     createdBy: userId,
   };
 
@@ -1177,6 +1194,12 @@ async function upsertRowDecision({ rowId, payload, userId }) {
     decisionPayload.finalCost = suggestion?.suggestedCost ?? row.rawJson?.normalized?.unitPrice ?? decisionPayload.finalCost;
     decisionPayload.finalDate = suggestion?.suggestedDate || decisionPayload.finalDate;
     decisionPayload.finalWorkId = suggestion?.suggestedWorkId || decisionPayload.finalWorkId;
+    if (!decisionPayload.finalMeasurementsJson && row.rawJson?.normalized?.detectedDimensions) {
+      decisionPayload.finalMeasurementsJson = {
+        ...row.rawJson.normalized.detectedDimensions,
+        applicationUnit: row.rawJson?.normalized?.suggestedApplicationUnit || null,
+      };
+    }
   }
 
   const decision = await ImportRowDecision.findOneAndUpdate({ importRowId: row.id }, decisionPayload, {
@@ -1358,6 +1381,7 @@ export async function applyImportSession(req, res) {
                   fileName: session.fileName,
                   rowNumber: row.sheetRowNumber,
                   rawValues: row.rawJson?.rowValues || [],
+                  finalMeasurements: decision.finalMeasurementsJson || null,
                 },
               },
               sourceImportSessionId: session.id,

@@ -10,6 +10,7 @@ const importRowDecisionSchema = new mongoose.Schema(
     finalDate: { type: Date, default: null },
     finalWorkId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
     finalNotes: { type: String, default: "" },
+    finalMeasurementsJson: { type: mongoose.Schema.Types.Mixed, default: null },
     savedHistoricId: { type: mongoose.Schema.Types.ObjectId, ref: "PriceRecord", default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },

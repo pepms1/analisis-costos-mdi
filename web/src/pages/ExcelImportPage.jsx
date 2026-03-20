@@ -75,6 +75,11 @@ function ExcelImportPage() {
     finalDate: "",
     finalWorkId: "",
     finalNotes: "",
+    lengthM: "",
+    widthM: "",
+    sourceUnit: "cm",
+    areaM2: "",
+    applicationUnit: "",
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -357,6 +362,7 @@ function ExcelImportPage() {
   }
 
   function openEditModal(row) {
+    const measurementSeed = row.decision?.finalMeasurementsJson || row.finalValues?.measurements || null;
     setEditingRow(row);
     setEditForm({
       finalCategoryId: row.decision?.finalCategoryId || row.finalValues?.categoryId || "",
@@ -365,6 +371,26 @@ function ExcelImportPage() {
       finalDate: row.decision?.finalDate ? String(row.decision.finalDate).slice(0, 10) : "",
       finalWorkId: row.decision?.finalWorkId || row.finalValues?.workId || "",
       finalNotes: row.decision?.finalNotes || "",
+      lengthM: measurementSeed?.lengthM ?? "",
+      widthM: measurementSeed?.widthM ?? "",
+      sourceUnit: measurementSeed?.sourceUnit || row.rawJson?.normalized?.detectedDimensions?.sourceUnit || "cm",
+      areaM2: measurementSeed?.areaM2 ?? "",
+      applicationUnit:
+        measurementSeed?.applicationUnit || row.rawJson?.normalized?.suggestedApplicationUnit || "",
+    });
+  }
+
+  function updateMeasurementField(field, value) {
+    setEditForm((prev) => {
+      const next = { ...prev, [field]: value };
+      const length = Number(next.lengthM);
+      const width = Number(next.widthM);
+      if (Number.isFinite(length) && length > 0 && Number.isFinite(width) && width > 0) {
+        next.areaM2 = Number((length * width).toFixed(6));
+      } else {
+        next.areaM2 = "";
+      }
+      return next;
     });
   }
 
@@ -378,6 +404,16 @@ function ExcelImportPage() {
       finalDate: editForm.finalDate || null,
       finalWorkId: editForm.finalWorkId || null,
       finalNotes: editForm.finalNotes || "",
+      finalMeasurementsJson:
+        editForm.lengthM === "" || editForm.widthM === ""
+          ? null
+          : {
+              lengthM: Number(editForm.lengthM),
+              widthM: Number(editForm.widthM),
+              sourceUnit: editForm.sourceUnit || null,
+              areaM2: editForm.areaM2 === "" ? Number(editForm.lengthM) * Number(editForm.widthM) : Number(editForm.areaM2),
+              applicationUnit: editForm.applicationUnit || null,
+            },
     });
     setEditingRow(null);
   }
@@ -623,6 +659,7 @@ function ExcelImportPage() {
                   <th>Categoría sugerida</th>
                   <th>Proveedor sugerido</th>
                   <th>Costo sugerido</th>
+                  <th>Geometría detectada</th>
                   <th>Confianza</th>
                   <th>Estado revisión</th>
                   <th>Final / notas</th>
@@ -643,6 +680,17 @@ function ExcelImportPage() {
                     <td>{row.suggestion?.reasonJson?.matched?.categoryName || "—"}</td>
                     <td>{row.suggestion?.reasonJson?.matched?.supplierName || "—"}</td>
                     <td>{row.suggestion?.suggestedCost ?? "—"}</td>
+                    <td className="cell-wrap">
+                      {row.rawJson?.normalized?.detectedDimensions ? (
+                        <>
+                          {row.rawJson.normalized.detectedDimensions.lengthM}m × {row.rawJson.normalized.detectedDimensions.widthM}m
+                          {" · "}
+                          {row.rawJson.normalized.detectedDimensions.areaM2}m²
+                          {" · sugerida: "}
+                          {row.rawJson?.normalized?.suggestedApplicationUnit || "—"}
+                        </>
+                      ) : "—"}
+                    </td>
                     <td>{renderConfidence(row)}</td>
                     <td>{renderStatusBadge(row.reviewStatus)}</td>
                     <td className="cell-wrap">{row.finalValues?.cost ?? "—"} · {row.finalValues?.notes || "sin notas"}</td>
@@ -710,6 +758,30 @@ function ExcelImportPage() {
               <label>
                 Notas
                 <input value={editForm.finalNotes} onChange={(event) => setEditForm((prev) => ({ ...prev, finalNotes: event.target.value }))} />
+              </label>
+              <label>
+                Largo sugerido (m)
+                <input type="number" step="0.001" value={editForm.lengthM} onChange={(event) => updateMeasurementField("lengthM", event.target.value)} />
+              </label>
+              <label>
+                Ancho sugerido (m)
+                <input type="number" step="0.001" value={editForm.widthM} onChange={(event) => updateMeasurementField("widthM", event.target.value)} />
+              </label>
+              <label>
+                Unidad base
+                <select value={editForm.sourceUnit} onChange={(event) => setEditForm((prev) => ({ ...prev, sourceUnit: event.target.value }))}>
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                  <option value="m">m</option>
+                </select>
+              </label>
+              <label>
+                Área calculada (m²)
+                <input type="number" step="0.000001" value={editForm.areaM2} onChange={(event) => setEditForm((prev) => ({ ...prev, areaM2: event.target.value }))} />
+              </label>
+              <label>
+                Unidad sugerida de aplicación
+                <input value={editForm.applicationUnit} onChange={(event) => setEditForm((prev) => ({ ...prev, applicationUnit: event.target.value }))} placeholder="m2 / pieza / ml..." />
               </label>
             </div>
             <div className="button-row">
