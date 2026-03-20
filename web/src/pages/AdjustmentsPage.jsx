@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
+import CrudActions from "../components/CrudActions";
 import PageHeader from "../components/PageHeader";
+import { useAuth } from "../contexts/AuthContext";
 
 const currentYear = new Date().getUTCFullYear();
 const defaultRows = [currentYear - 1, currentYear, currentYear + 1].map((year) => ({ year: String(year), rate: "" }));
@@ -52,6 +54,8 @@ function adjustmentToForm(item) {
 }
 
 function AdjustmentsPage() {
+  const { user } = useAuth();
+  const canDeleteInflation = user?.role === "superadmin";
   const [items, setItems] = useState([]);
   const [rows, setRows] = useState(defaultRows);
   const [name, setName] = useState("Inflación anual");
@@ -127,6 +131,32 @@ function AdjustmentsPage() {
       setStatus({ error: "", success: "Inflación guardada correctamente." });
     } catch (submitError) {
       setStatus({ error: submitError.message, success: "" });
+    }
+  }
+
+  async function handleDelete(row) {
+    const sameAdjustmentRows = inflationHistoryRows.filter((item) => item.adjustmentId === row.adjustmentId);
+    const isSingleYearSetting = sameAdjustmentRows.length === 1;
+    const confirmationMessage = isSingleYearSetting
+      ? `¿Seguro que deseas eliminar la inflación ${row.year} con valor ${row.rate}%? Esta acción es permanente.`
+      : `¿Seguro que deseas eliminar la configuración que incluye ${row.year} (${row.rate}%)? Se eliminarán ${sameAdjustmentRows.length} años asociados. Esta acción es permanente.`;
+
+    if (!window.confirm(confirmationMessage)) return;
+
+    try {
+      setStatus({ error: "", success: "" });
+      await apiRequest(`/adjustments/${row.adjustmentId}`, { method: "DELETE" });
+
+      if (editingId === row.adjustmentId) {
+        setEditingId("");
+        setName("Inflación anual");
+        setRows(defaultRows);
+      }
+
+      await loadItems();
+      setStatus({ error: "", success: `Registro ${row.year} (${row.rate}%) eliminado correctamente.` });
+    } catch (deleteError) {
+      setStatus({ error: `No se pudo eliminar ${row.year} (${row.rate}%): ${deleteError.message}`, success: "" });
     }
   }
 
@@ -216,6 +246,7 @@ function AdjustmentsPage() {
               <th>Inflación (%)</th>
               <th>Estatus</th>
               <th>Última actualización</th>
+              {canDeleteInflation ? <th>Acciones</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -226,11 +257,27 @@ function AdjustmentsPage() {
                   <td>{row.rate}</td>
                   <td>{row.isActive ? "Activo" : "Inactivo"}</td>
                   <td>{formatDate(row.updatedAt)}</td>
+                  {canDeleteInflation ? (
+                    <td>
+                      <CrudActions
+                        onEdit={() => {
+                          const selected = inflationItems.find((item) => item.id === row.adjustmentId);
+                          if (!selected) return;
+                          const form = adjustmentToForm(selected);
+                          setEditingId(form.id);
+                          setName(form.name);
+                          setRows(form.rows.length ? form.rows : defaultRows);
+                          setStatus({ error: "", success: "" });
+                        }}
+                        onDelete={() => handleDelete(row)}
+                      />
+                    </td>
+                  ) : null}
                 </tr>
               ))
             ) : (
               <tr>
-                <td className="empty-state" colSpan={4}>
+                <td className="empty-state" colSpan={canDeleteInflation ? 5 : 4}>
                   Aún no hay inflaciones guardadas.
                 </td>
               </tr>
