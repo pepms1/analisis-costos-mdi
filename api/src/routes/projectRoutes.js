@@ -4,6 +4,7 @@ import {
   deactivateProject,
   getProjectById,
   listProjects,
+  reactivateProject,
   updateProject,
 } from "../controllers/projectController.js";
 import { requireRoles } from "../middlewares/authMiddleware.js";
@@ -18,5 +19,6 @@ router.get("/:id", asyncHandler(getProjectById));
 router.post("/", requireRoles("superadmin", "admin"), validate(createProjectSchema), asyncHandler(createProject));
 router.put("/:id", requireRoles("superadmin", "admin"), validate(updateProjectSchema), asyncHandler(updateProject));
 router.delete("/:id", requireRoles("superadmin", "admin"), asyncHandler(deactivateProject));
+router.patch("/:id/reactivate", requireRoles("superadmin", "admin"), asyncHandler(reactivateProject));
 
 export default router;

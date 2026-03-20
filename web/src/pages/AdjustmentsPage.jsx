@@ -29,6 +29,12 @@ function AdjustmentsPage() {
   const [rows, setRows] = useState(defaultRows);
   const [name, setName] = useState("Inflación anual");
   const [editingId, setEditingId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [error, setError] = useState("");
+
+  async function loadItems() {
+    const data = await apiRequest(`/adjustments?status=${statusFilter}`);
+    setItems(data.items);
   const [status, setStatus] = useState({ error: "", success: "" });
 
   async function loadItems() {
@@ -38,7 +44,7 @@ function AdjustmentsPage() {
 
   useEffect(() => {
     loadItems().catch(() => setItems([]));
-  }, []);
+  }, [statusFilter]);
 
   const inflationItem = useMemo(
     () => items.find((item) => item.adjustmentType === "inflation" && item.scopeType === "general" && item.isActive),
@@ -81,6 +87,30 @@ function AdjustmentsPage() {
     }
   }
 
+  async function handleToggleActive(item) {
+    const shouldActivate = !item.isActive;
+    if (
+      !window.confirm(
+        shouldActivate
+          ? `¿Quieres reactivar este registro (${item.name})?`
+          : `¿Quieres desactivar este registro (${item.name})?`
+      )
+    ) return;
+
+    try {
+      setError("");
+      await apiRequest(shouldActivate ? `/adjustments/${item.id}/reactivate` : `/adjustments/${item.id}`, {
+        method: shouldActivate ? "PATCH" : "DELETE",
+      });
+      if (editingId === item.id) {
+        setEditingId("");
+        setForm(initialForm);
+      }
+      await loadItems();
+    } catch (deleteError) {
+      setError(deleteError.message);
+    }
+  }
   return (
     <section className="page-shell">
       <PageHeader
@@ -116,6 +146,58 @@ function AdjustmentsPage() {
                 step="0.01"
               />
             </div>
+          </form>
+        ) : (
+          <div className="card">
+            <h3>Consulta de ajustes</h3>
+            <p className="muted">Tu rol actual solo tiene permisos de lectura en este modulo.</p>
+          </div>
+        )}
+
+        <DataTable
+          columns={[
+            { key: "name", label: "Nombre" },
+            { key: "adjustmentType", label: "Tipo" },
+            { key: "scopeType", label: "Alcance" },
+            { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
+            ...(canManage
+              ? [
+                  {
+                    key: "actions",
+                    label: "Acciones",
+                    render: (_value, row) => (
+                      <CrudActions
+                        onEdit={() => {
+                          setEditingId(row.id);
+                          setForm({
+                            name: row.name || "",
+                            adjustmentType: row.adjustmentType || "inflation",
+                            scopeType: row.scopeType || "general",
+                            factors: JSON.stringify(row.factors || [], null, 2),
+                          });
+                          setError("");
+                        }}
+                        onToggleActive={() => handleToggleActive(row)}
+                        isActive={row.isActive}
+                      />
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+          rows={items}
+        />
+      </div>
+      <div className="card form-grid">
+        <label className="field">
+          <span>Visibilidad</span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="active">Solo activos</option>
+            <option value="inactive">Solo inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </label>
+      </div>
           ))}
         </div>
 

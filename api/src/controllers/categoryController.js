@@ -2,7 +2,11 @@ import { Category } from "../models/Category.js";
 import { AppError } from "../utils/AppError.js";
 
 export async function listCategories(_req, res) {
-  const items = await Category.find().sort({ createdAt: -1 });
+  const status = _req.query.status || "active";
+  const query = {};
+  if (status === "active") query.isActive = true;
+  if (status === "inactive") query.isActive = false;
+  const items = await Category.find(query).sort({ createdAt: -1 });
   res.json({
     items: items.map((item) => ({
       id: item.id,
@@ -48,6 +52,23 @@ export async function deactivateCategory(req, res) {
     req.params.id,
     {
       isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Category not found", 404);
+  }
+
+  res.json({ item });
+}
+
+export async function reactivateCategory(req, res) {
+  const item = await Category.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: true,
       updatedBy: req.user.id,
     },
     { new: true, runValidators: true }

@@ -1,8 +1,12 @@
 import { Supplier } from "../models/Supplier.js";
 import { AppError } from "../utils/AppError.js";
 
-export async function listSuppliers(_req, res) {
-  const items = await Supplier.find().sort({ createdAt: -1 });
+export async function listSuppliers(req, res) {
+  const status = req.query.status || "active";
+  const query = {};
+  if (status === "active") query.isActive = true;
+  if (status === "inactive") query.isActive = false;
+  const items = await Supplier.find(query).sort({ createdAt: -1 });
   res.json({
     items: items.map((item) => ({
       id: item.id,
@@ -51,6 +55,23 @@ export async function deactivateSupplier(req, res) {
     req.params.id,
     {
       isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Supplier not found", 404);
+  }
+
+  res.json({ item });
+}
+
+export async function reactivateSupplier(req, res) {
+  const item = await Supplier.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: true,
       updatedBy: req.user.id,
     },
     { new: true, runValidators: true }
