@@ -9,6 +9,7 @@ import priceRecordRoutes from "./priceRecordRoutes.js";
 import adjustmentRoutes from "./adjustmentRoutes.js";
 import quoteCheckRoutes from "./quoteCheckRoutes.js";
 import dashboardRoutes from "./dashboardRoutes.js";
+import importRoutes from "./importRoutes.js";
 import { requireAuth } from "../middlewares/authMiddleware.js";
 
 const router = Router();
@@ -28,5 +29,6 @@ router.use("/projects", projectRoutes);
 router.use("/price-records", priceRecordRoutes);
 router.use("/adjustments", adjustmentRoutes);
 router.use("/quote-checks", quoteCheckRoutes);
+router.use(importRoutes);
 
 export default router;

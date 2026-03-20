@@ -140,3 +140,29 @@ export const createQuoteCheckSchema = z.object({
     })
     .optional(),
 });
+
+
+export const createImportSessionSchema = z.object({
+  fileName: z.string().min(1),
+  fileType: z.string().optional().default("application/vnd.ms-excel"),
+  sourceType: z.string().optional().default("excel"),
+  sheetName: z.string().optional().default(""),
+  status: z.enum(["uploaded", "mapped", "parsed", "reviewing", "confirmed", "failed"]).optional(),
+  obraId: z.string().nullable().optional(),
+  defaultSupplierId: z.string().nullable().optional(),
+  defaultCategoryId: z.string().nullable().optional(),
+  defaultDate: z.string().nullable().optional(),
+  columnMappingJson: z.record(z.string(), z.any()).optional().default({}),
+  optionsJson: z.record(z.string(), z.any()).optional().default({}),
+});
+
+export const saveImportRowDecisionSchema = z.object({
+  decisionType: z.enum(["accept", "edit", "ignore"]),
+  finalCategoryId: z.string().nullable().optional(),
+  finalSupplierId: z.string().nullable().optional(),
+  finalCost: z.number().nullable().optional(),
+  finalDate: z.string().nullable().optional(),
+  finalWorkId: z.string().nullable().optional(),
+  finalNotes: z.string().optional().default(""),
+  savedHistoricId: z.string().nullable().optional(),
+});

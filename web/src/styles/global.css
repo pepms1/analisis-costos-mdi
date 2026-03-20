@@ -782,3 +782,25 @@ th {
   font-size: 0.9rem;
   line-height: 1.35;
 }
+
+.import-assistant-card {
+  display: grid;
+  gap: 18px;
+}
+
+.import-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+}
+
+.import-upload-placeholder {
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: var(--panel-strong);
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
