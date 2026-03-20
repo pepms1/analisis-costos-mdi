@@ -10,7 +10,8 @@ import SuppliersPage from "./pages/SuppliersPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import PriceRecordsPage from "./pages/PriceRecordsPage";
 import AdjustmentsPage from "./pages/AdjustmentsPage";
-import QuoteChecksPage from "./pages/QuoteChecksPage";
+import ConsultaPage from "./pages/ConsultaPage";
+import QuickCapturePage from "./pages/QuickCapturePage";
 
 function App() {
   return (
@@ -24,7 +25,12 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<ConsultaPage />} />
+        <Route path="consulta" element={<ConsultaPage />} />
+        <Route path="captura-rapida" element={<QuickCapturePage />} />
+        <Route path="historicos" element={<PriceRecordsPage />} />
+        <Route path="inflacion" element={<AdjustmentsPage />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route
           path="users"
           element={
@@ -37,9 +43,6 @@ function App() {
         <Route path="concepts" element={<ConceptsPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="projects" element={<ProjectsPage />} />
-        <Route path="price-records" element={<PriceRecordsPage />} />
-        <Route path="adjustments" element={<AdjustmentsPage />} />
-        <Route path="quote-checks" element={<QuoteChecksPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
