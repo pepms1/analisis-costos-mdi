@@ -523,7 +523,16 @@ th {
 }
 
 .stats-grid-main {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.highlight-card {
+  border-color: rgba(38, 70, 83, 0.28);
+  background: linear-gradient(180deg, #f9f4ea 0%, #fffdf9 100%);
+}
+
+.highlight-card h3 {
+  color: var(--brand);
 }
 
 .wide-grid {
