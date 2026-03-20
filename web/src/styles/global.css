@@ -313,7 +313,11 @@ th {
   .app-shell,
   .content-grid,
   .stats-grid,
-  .subgrid {
+  .subgrid,
+  .stats-grid-main,
+  .compact-form,
+  .wide-grid,
+  .inflation-grid {
     grid-template-columns: 1fr;
   }
 
@@ -336,4 +340,70 @@ th {
   .layout-content {
     overflow: visible;
   }
+}
+
+
+.nav-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.nav-group {
+  display: grid;
+  gap: 8px;
+}
+
+.nav-group-title {
+  color: rgba(249, 244, 237, 0.6);
+  font-size: 0.68rem;
+}
+
+.stats-grid-main {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wide-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+}
+
+.compact-form {
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+}
+
+.details-block {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 10px 14px;
+  background: var(--panel-strong);
+}
+
+.details-block summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.details-content {
+  margin-top: 14px;
+}
+
+.inflation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.inflation-head {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.inflation-grid input {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.inflation-row {
+  display: contents;
 }
