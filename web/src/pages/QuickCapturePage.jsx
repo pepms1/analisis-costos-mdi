@@ -11,9 +11,8 @@ const initialForm = {
   pricingMode: "unit_price",
   location: "",
   observations: "",
-  width: "",
-  height: "",
-  length: "",
+  largo: "",
+  ancho: "",
   measurementUnit: "cm",
 };
 
@@ -39,6 +38,10 @@ function QuickCapturePage() {
   }, []);
 
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === form.conceptId), [concepts, form.conceptId]);
+  const requiresDimensions = Boolean(
+    selectedConcept &&
+      (selectedConcept.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(selectedConcept.calculationType))
+  );
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -46,6 +49,11 @@ function QuickCapturePage() {
 
     if (!selectedConcept) {
       setStatus({ error: "Selecciona un concepto válido.", success: "" });
+      return;
+    }
+
+    if (requiresDimensions && (!form.largo || !form.ancho)) {
+      setStatus({ error: "Para conceptos dimensionales captura largo y ancho.", success: "" });
       return;
     }
 
@@ -64,15 +72,15 @@ function QuickCapturePage() {
           amount: Number(form.amount),
           location: form.location,
           observations: form.observations,
-          dimensions:
-            form.width || form.height || form.length
-              ? {
-                  measurementUnit: form.measurementUnit,
-                  width: form.width ? Number(form.width) : undefined,
-                  height: form.height ? Number(form.height) : undefined,
-                  length: form.length ? Number(form.length) : undefined,
-                }
-              : undefined,
+          dimensions: requiresDimensions
+            ? {
+                measurementUnit: form.measurementUnit,
+                largo: Number(form.largo),
+                ancho: Number(form.ancho),
+                width: Number(form.largo),
+                height: Number(form.ancho),
+              }
+            : undefined,
         }),
       });
 
@@ -168,30 +176,30 @@ function QuickCapturePage() {
         <details className="details-block">
           <summary>Más detalles</summary>
           <div className="form-grid details-content">
-            <div className="subgrid">
+            {requiresDimensions ? (
+              <div className="subgrid">
+                <label className="field">
+                  <span>Largo ({form.measurementUnit})</span>
+                  <input value={form.largo} onChange={(event) => setForm((prev) => ({ ...prev, largo: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Ancho ({form.measurementUnit})</span>
+                  <input value={form.ancho} onChange={(event) => setForm((prev) => ({ ...prev, ancho: event.target.value }))} />
+                </label>
+              </div>
+            ) : null}
+            {requiresDimensions ? (
               <label className="field">
-                <span>Ancho</span>
-                <input value={form.width} onChange={(event) => setForm((prev) => ({ ...prev, width: event.target.value }))} />
+                <span>Unidad de captura</span>
+                <select
+                  value={form.measurementUnit}
+                  onChange={(event) => setForm((prev) => ({ ...prev, measurementUnit: event.target.value }))}
+                >
+                  <option value="cm">cm</option>
+                  <option value="m">m</option>
+                </select>
               </label>
-              <label className="field">
-                <span>Alto</span>
-                <input value={form.height} onChange={(event) => setForm((prev) => ({ ...prev, height: event.target.value }))} />
-              </label>
-              <label className="field">
-                <span>Longitud</span>
-                <input value={form.length} onChange={(event) => setForm((prev) => ({ ...prev, length: event.target.value }))} />
-              </label>
-            </div>
-            <label className="field">
-              <span>Unidad de medida</span>
-              <select
-                value={form.measurementUnit}
-                onChange={(event) => setForm((prev) => ({ ...prev, measurementUnit: event.target.value }))}
-              >
-                <option value="cm">cm</option>
-                <option value="m">m</option>
-              </select>
-            </label>
+            ) : null}
             <label className="field">
               <span>Ubicación</span>
               <input value={form.location} onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))} />

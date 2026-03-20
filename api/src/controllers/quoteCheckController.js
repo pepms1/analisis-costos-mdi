@@ -4,11 +4,35 @@ import { PriceRecord } from "../models/PriceRecord.js";
 import { QuoteCheck } from "../models/QuoteCheck.js";
 import { AppError } from "../utils/AppError.js";
 import { applyAdjustment, classifyQuote } from "../utils/quoteCheck.js";
+import { toMeters } from "../utils/normalization.js";
+
+function normalizeDimensions(dimensions = {}) {
+  if (!dimensions) return { largo: null, ancho: null, area: null };
+
+  const measurementUnit = dimensions.measurementUnit || "cm";
+  const largoRaw = dimensions.largo ?? dimensions.length ?? dimensions.width;
+  let anchoRaw = dimensions.ancho ?? dimensions.height;
+
+  if (anchoRaw === undefined || anchoRaw === null) {
+    anchoRaw = largoRaw === dimensions.width ? dimensions.length ?? null : dimensions.width ?? null;
+  }
+
+  const largo = toMeters(largoRaw, measurementUnit);
+  const ancho = toMeters(anchoRaw, measurementUnit);
+
+  return {
+    largo,
+    ancho,
+    area: largo && ancho ? largo * ancho : null,
+  };
+}
+
+function isDimensionalConcept(concept) {
+  return concept?.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(concept?.calculationType);
+}
 
 export async function listQuoteChecks(_req, res) {
-  const items = await QuoteCheck.find()
-    .populate("conceptId", "name")
-    .sort({ createdAt: -1 });
+  const items = await QuoteCheck.find().populate("conceptId", "name").sort({ createdAt: -1 });
 
   res.json({
     items: items.map((item) => ({
@@ -19,12 +43,17 @@ export async function listQuoteChecks(_req, res) {
       quotedPrice: item.quotedPrice,
       differencePercent: item.differencePercent,
       result: item.result,
+      baseDimensions: item.baseDimensions,
+      targetDimensions: item.targetDimensions,
+      baseAreaM2: item.baseAreaM2,
+      targetAreaM2: item.targetAreaM2,
+      proportionalEstimatedPrice: item.proportionalEstimatedPrice,
     })),
   });
 }
 
 export async function createQuoteCheck(req, res) {
-  const { conceptId, supplierId, quotedPrice, targetDate } = req.validatedBody;
+  const { conceptId, supplierId, quotedPrice, targetDate, dimensions } = req.validatedBody;
 
   const concept = await Concept.findById(conceptId);
 
@@ -37,7 +66,14 @@ export async function createQuoteCheck(req, res) {
     query.supplierId = supplierId;
   }
 
-  const referenceRecord = await PriceRecord.findOne(query).sort({ priceDate: -1, createdAt: -1 });
+  const dimensional = isDimensionalConcept(concept);
+  const referenceRecord = dimensional
+    ? await PriceRecord.findOne({
+        ...query,
+        normalizedPrice: { $gt: 0 },
+        normalizedQuantity: { $gt: 0 },
+      }).sort({ priceDate: -1, createdAt: -1 })
+    : await PriceRecord.findOne(query).sort({ priceDate: -1, createdAt: -1 });
 
   if (!referenceRecord) {
     throw new AppError("No historical record found for the selected filters", 404);
@@ -53,15 +89,30 @@ export async function createQuoteCheck(req, res) {
   });
 
   const factors = applicableAdjustments.flatMap((setting) => setting.factors);
-  const historicalPrice = referenceRecord.normalizedPrice || referenceRecord.unitPrice || referenceRecord.totalPrice;
-  const adjustedPrice = applyAdjustment(historicalPrice, factors);
-  const comparison = classifyQuote(adjustedPrice, quotedPrice);
+  const basePrice = dimensional
+    ? referenceRecord.normalizedPrice
+    : referenceRecord.normalizedPrice || referenceRecord.unitPrice || referenceRecord.totalPrice;
+  const adjustedPrice = applyAdjustment(basePrice, factors);
+
+  const base = normalizeDimensions(referenceRecord.dimensions);
+  const target = normalizeDimensions(dimensions);
+
+  const proportionalEstimatedPrice =
+    dimensional && adjustedPrice && target.area
+      ? adjustedPrice * target.area
+      : adjustedPrice;
+
+  if (dimensional && !target.area) {
+    throw new AppError("Dimensional concepts require largo and ancho", 400);
+  }
+
+  const comparison = classifyQuote(proportionalEstimatedPrice, quotedPrice);
 
   const item = await QuoteCheck.create({
     conceptId,
     supplierId: supplierId || null,
     referencePriceRecordId: referenceRecord.id,
-    historicalPrice,
+    historicalPrice: basePrice,
     adjustedPrice,
     quotedPrice,
     differenceAbsolute: comparison.differenceAbsolute,
@@ -69,6 +120,11 @@ export async function createQuoteCheck(req, res) {
     result: comparison.result,
     targetDate,
     createdBy: req.user.id,
+    baseDimensions: referenceRecord.dimensions || null,
+    targetDimensions: dimensions || null,
+    baseAreaM2: referenceRecord.normalizedQuantity || base.area,
+    targetAreaM2: target.area,
+    proportionalEstimatedPrice,
   });
 
   res.status(201).json({ item });
