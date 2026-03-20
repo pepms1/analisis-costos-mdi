@@ -155,6 +155,7 @@ function HistoricalConsultPage() {
       <DataTable
         columns={[
           { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
+          { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
           { key: "amount", label: "Precio registrado", render: (value) => formatCurrency(value) },
           { key: "conceptName", label: "Concepto" },
           { key: "categoryName", label: "Categoría" },
