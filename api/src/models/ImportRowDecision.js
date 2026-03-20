@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const importRowDecisionSchema = new mongoose.Schema(
   {
     importRowId: { type: mongoose.Schema.Types.ObjectId, ref: "ImportRow", required: true, unique: true },
-    decisionType: { type: String, enum: ["accept", "edit", "ignore"], required: true },
+    decisionType: { type: String, enum: ["accepted", "edited", "ignored", "new"], required: true },
     finalCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", default: null },
     finalSupplierId: { type: mongoose.Schema.Types.ObjectId, ref: "Supplier", default: null },
     finalCost: { type: Number, default: null },

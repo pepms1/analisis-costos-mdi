@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   applyImportSession,
+  bulkSaveImportRowDecisions,
   createImportSession,
   generateImportSessionSuggestions,
   getImportSession,
@@ -50,6 +51,7 @@ router.patch(
   validate(saveImportRowDecisionSchema),
   asyncHandler(saveImportRowDecision)
 );
+router.post("/import-sessions/:id/decisions/bulk", requirePermission(PERMISSIONS.PRICES_EDIT), asyncHandler(bulkSaveImportRowDecisions));
 router.post("/import-sessions/:id/apply", requirePermission(PERMISSIONS.PRICES_CREATE), asyncHandler(applyImportSession));
 
 export default router;
