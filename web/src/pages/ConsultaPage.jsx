@@ -47,12 +47,65 @@ function classifyQuote(adjustedPrice, quote) {
   return { label: "Lógico", tone: "ok", differencePercent };
 }
 
+function toMeters(value, unit = "m") {
+  const numericValue = Number(value);
+  if (!numericValue) return null;
+  return unit === "cm" ? numericValue / 100 : numericValue;
+}
+
+function getMeasurementUnit(concept) {
+  return concept?.dimensionSchema?.inputUnit || "cm";
+}
+
+function normalizeTargetQuantity(concept, measureInputs) {
+  const supportsDimensions =
+    concept?.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(concept?.calculationType);
+  if (!supportsDimensions) return null;
+  const unit = getMeasurementUnit(concept);
+  const width = toMeters(measureInputs.width, unit);
+  const height = toMeters(measureInputs.height, unit);
+  const length = toMeters(measureInputs.length, unit);
+
+  if (concept.calculationType === "area_based") {
+    if (!width || !height) return null;
+    return { quantity: width * height, normalizedUnit: "m2" };
+  }
+
+  if (concept.calculationType === "linear_based") {
+    if (!length) return null;
+    return { quantity: length, normalizedUnit: "ml" };
+  }
+
+  if (concept.calculationType === "height_based") {
+    if (!length) return null;
+    return { quantity: length, normalizedUnit: "m" };
+  }
+
+  return null;
+}
+
+function formatDimensions(dimensions) {
+  if (!dimensions) return "—";
+  const pieces = [];
+  if (dimensions.width) pieces.push(`Ancho: ${dimensions.width}`);
+  if (dimensions.height) pieces.push(`Alto: ${dimensions.height}`);
+  if (dimensions.length) pieces.push(`Longitud/Altura: ${dimensions.length}`);
+  if (dimensions.depth) pieces.push(`Prof.: ${dimensions.depth}`);
+  if (!pieces.length) return "—";
+  return `${pieces.join(" · ")} ${dimensions.measurementUnit || "cm"}`;
+}
+
 function ConsultaPage() {
   const [concepts, setConcepts] = useState([]);
   const [records, setRecords] = useState([]);
   const [adjustments, setAdjustments] = useState([]);
   const [filters, setFilters] = useState({ search: "", conceptId: "" });
   const [todayQuote, setTodayQuote] = useState("");
+  const [measureInputs, setMeasureInputs] = useState({
+    width: "",
+    height: "",
+    length: "",
+  });
 
   useEffect(() => {
     Promise.all([apiRequest("/concepts"), apiRequest("/adjustments")])
@@ -87,6 +140,14 @@ function ConsultaPage() {
   }, [concepts, filters.search]);
 
   const { inflationSetting, inflationByYear } = useMemo(() => normalizeInflation(adjustments), [adjustments]);
+  const selectedConcept = useMemo(
+    () => concepts.find((concept) => concept.id === filters.conceptId) || null,
+    [concepts, filters.conceptId]
+  );
+  const dimensionalTypes = ["area_based", "linear_based", "height_based"];
+  const requiresDimensions = Boolean(
+    selectedConcept && (selectedConcept.requiresDimensions || dimensionalTypes.includes(selectedConcept.calculationType))
+  );
 
   const recordsWithAdjusted = useMemo(
     () =>
@@ -97,10 +158,48 @@ function ConsultaPage() {
     [records, inflationByYear]
   );
 
-  const latestRecord = recordsWithAdjusted[0];
-  const latestAdjusted = latestRecord?.adjustedAmount || null;
-  const gap = latestAdjusted && latestRecord?.amount ? latestAdjusted - latestRecord.amount : null;
-  const quoteEvaluation = classifyQuote(latestAdjusted, Number(todayQuote));
+  const latestRecord = recordsWithAdjusted[0] || null;
+  const dimensionalReferenceRecord = useMemo(
+    () =>
+      recordsWithAdjusted.find(
+        (item) => Number(item.normalizedPrice) > 0 && Number(item.normalizedQuantity) > 0
+      ) || null,
+    [recordsWithAdjusted]
+  );
+
+  const baseRecord = requiresDimensions ? dimensionalReferenceRecord : latestRecord;
+  const latestAdjusted = baseRecord?.adjustedAmount || null;
+  const gap = latestAdjusted && baseRecord?.amount ? latestAdjusted - baseRecord.amount : null;
+
+  const targetMeasure = useMemo(
+    () => normalizeTargetQuantity(selectedConcept, measureInputs),
+    [selectedConcept, measureInputs]
+  );
+  const dimensionSchema = selectedConcept?.dimensionSchema || {};
+  const showWidthInput = Boolean(dimensionSchema.width || selectedConcept?.calculationType === "area_based");
+  const showHeightInput = Boolean(dimensionSchema.height || selectedConcept?.calculationType === "area_based");
+  const showLengthInput = Boolean(
+    dimensionSchema.length ||
+      selectedConcept?.calculationType === "linear_based" ||
+      selectedConcept?.calculationType === "height_based"
+  );
+
+  const adjustedNormalizedPrice =
+    requiresDimensions && baseRecord?.normalizedPrice
+      ? adjustedPriceWithInflation(baseRecord.normalizedPrice, baseRecord.priceDate, inflationByYear)
+      : null;
+
+  const estimatedComparablePrice =
+    !selectedConcept || selectedConcept.calculationType === "custom_formula"
+      ? null
+      : requiresDimensions
+      ? adjustedNormalizedPrice && targetMeasure?.quantity
+        ? adjustedNormalizedPrice * targetMeasure.quantity
+        : null
+      : latestAdjusted;
+
+  const quoteEvaluation = classifyQuote(estimatedComparablePrice, Number(todayQuote));
+  const hasSufficientDimensionalData = !requiresDimensions || Boolean(baseRecord);
 
   return (
     <section className="page-shell">
@@ -123,7 +222,11 @@ function ConsultaPage() {
           <span>Selecciona un concepto</span>
           <select
             value={filters.conceptId}
-            onChange={(event) => setFilters((prev) => ({ ...prev, conceptId: event.target.value }))}
+            onChange={(event) => {
+              setFilters((prev) => ({ ...prev, conceptId: event.target.value }));
+              setMeasureInputs({ width: "", height: "", length: "" });
+              setTodayQuote("");
+            }}
           >
             <option value="">Selecciona un concepto</option>
             {filteredConcepts.map((concept) => (
@@ -133,16 +236,75 @@ function ConsultaPage() {
             ))}
           </select>
         </label>
+
+        {requiresDimensions ? (
+          <>
+            {selectedConcept?.calculationType === "area_based" || (showWidthInput && showHeightInput) ? (
+              <>
+                {showWidthInput ? (
+                  <label className="field">
+                    <span>Ancho ({getMeasurementUnit(selectedConcept)})</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={measureInputs.width}
+                      onChange={(event) => setMeasureInputs((prev) => ({ ...prev, width: event.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </label>
+                ) : null}
+                {showHeightInput ? (
+                  <label className="field">
+                    <span>Alto ({getMeasurementUnit(selectedConcept)})</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={measureInputs.height}
+                      onChange={(event) => setMeasureInputs((prev) => ({ ...prev, height: event.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+
+            {selectedConcept?.calculationType === "linear_based" ? (
+              <label className="field">
+                <span>Longitud ({getMeasurementUnit(selectedConcept)})</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={measureInputs.length}
+                  onChange={(event) => setMeasureInputs((prev) => ({ ...prev, length: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </label>
+            ) : null}
+
+            {selectedConcept?.calculationType === "height_based" ? (
+              <label className="field">
+                <span>Altura ({getMeasurementUnit(selectedConcept)})</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={measureInputs.length}
+                  onChange={(event) => setMeasureInputs((prev) => ({ ...prev, length: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
       </div>
 
       <div className="stats-grid stats-grid-main">
         <div className="card stat-card">
-          <p className="eyebrow">Último precio</p>
-          <h3>{formatCurrency(latestRecord?.amount)}</h3>
-          <p className="muted">Fecha: {formatDate(latestRecord?.priceDate)}</p>
+          <p className="eyebrow">Precio histórico base</p>
+          <h3>{formatCurrency(baseRecord?.amount)}</h3>
+          <p className="muted">Fecha: {formatDate(baseRecord?.priceDate)}</p>
         </div>
         <div className="card stat-card">
-          <p className="eyebrow">Precio estimado actual</p>
+          <p className="eyebrow">Precio ajustado por inflación</p>
           <h3>{formatCurrency(latestAdjusted)}</h3>
           <p className="muted">Inflación activa: {inflationSetting?.name || "Sin configurar"}</p>
         </div>
@@ -152,11 +314,59 @@ function ConsultaPage() {
           <p className="muted">{gap !== null && latestRecord?.amount ? formatPercent((gap / latestRecord.amount) * 100) : "—"}</p>
         </div>
         <div className="card stat-card">
-          <p className="eyebrow">Referencia reciente</p>
-          <h3>{latestRecord?.supplierName || "—"}</h3>
-          <p className="muted">Obra: {latestRecord?.projectName || "—"}</p>
+          <p className="eyebrow">Referencia base</p>
+          <h3>{baseRecord?.supplierName || "—"}</h3>
+          <p className="muted">Obra: {baseRecord?.projectName || "—"}</p>
         </div>
       </div>
+
+      <div className="stats-grid stats-grid-main">
+        <div className="card stat-card">
+          <p className="eyebrow">Medida histórica base</p>
+          <h3>{formatDimensions(baseRecord?.dimensions)}</h3>
+          <p className="muted">
+            {baseRecord?.normalizedQuantity && baseRecord?.normalizedUnit
+              ? `${baseRecord.normalizedQuantity.toFixed(3)} ${baseRecord.normalizedUnit}`
+              : "Sin normalización"}
+          </p>
+        </div>
+        <div className="card stat-card">
+          <p className="eyebrow">Medida nueva consultada</p>
+          <h3>
+            {targetMeasure?.quantity && targetMeasure?.normalizedUnit
+              ? `${targetMeasure.quantity.toFixed(3)} ${targetMeasure.normalizedUnit}`
+              : "—"}
+          </h3>
+          <p className="muted">
+            {requiresDimensions
+              ? "Captura las medidas para estimar precio proporcional."
+              : "Este concepto no requiere medidas."}
+          </p>
+        </div>
+        <div className="card stat-card">
+          <p className="eyebrow">Precio proporcional estimado</p>
+          <h3>{formatCurrency(estimatedComparablePrice)}</h3>
+          <p className="muted">
+            {requiresDimensions
+              ? adjustedNormalizedPrice
+                ? `Base ajustada por ${baseRecord?.normalizedUnit || "unidad"}`
+                : "No hay precio normalizado para comparación."
+              : "Misma unidad del histórico"}
+          </p>
+        </div>
+      </div>
+
+      {selectedConcept?.calculationType === "custom_formula" ? (
+        <div className="alert">
+          <strong>Fórmula personalizada:</strong> la comparación avanzada para <code>custom_formula</code> no está disponible todavía.
+        </div>
+      ) : null}
+
+      {requiresDimensions && !hasSufficientDimensionalData ? (
+        <div className="alert error">
+          <strong>Sin información dimensional suficiente:</strong> el histórico actual no tiene medidas/normalización para estimar proporcionalmente.
+        </div>
+      ) : null}
 
       <div className="content-grid wide-grid">
         <DataTable
@@ -166,6 +376,17 @@ function ConsultaPage() {
             { key: "projectName", label: "Obra" },
             { key: "amount", label: "Precio histórico", render: (value) => formatCurrency(value) },
             { key: "adjustedAmount", label: "Precio ajustado", render: (value) => formatCurrency(value) },
+            {
+              key: "dimensions",
+              label: "Dimensiones base",
+              render: (value) => formatDimensions(value),
+            },
+            {
+              key: "normalizedQuantity",
+              label: "Cantidad norm.",
+              render: (value, row) => (value && row.normalizedUnit ? `${value.toFixed(3)} ${row.normalizedUnit}` : "—"),
+            },
+            { key: "normalizedPrice", label: "Precio norm.", render: (value) => formatCurrency(value) },
             { key: "observations", label: "Observaciones" },
           ]}
           rows={recordsWithAdjusted}
@@ -174,7 +395,9 @@ function ConsultaPage() {
 
         <div className="card form-grid">
           <h3>Chequeo rápido de cotización</h3>
-          <p className="muted">"Me cotizaron hoy en..." para validar rápidamente contra el valor ajustado.</p>
+          <p className="muted">
+            "Me cotizaron hoy en..." para validar rápidamente contra el valor estimado (ajustado/proporcional).
+          </p>
           <label className="field">
             <span>Precio cotizado hoy</span>
             <input
@@ -191,6 +414,7 @@ function ConsultaPage() {
             <p className="muted">
               Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}
             </p>
+            <p className="muted">Base de comparación: {formatCurrency(estimatedComparablePrice)}</p>
           </div>
         </div>
       </div>

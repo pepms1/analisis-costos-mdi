@@ -28,6 +28,7 @@ export async function listConcepts(req, res) {
       primaryUnit: item.primaryUnit,
       calculationType: item.calculationType,
       requiresDimensions: item.requiresDimensions,
+      dimensionSchema: item.dimensionSchema || null,
       description: item.description,
       isActive: item.isActive,
     })),
