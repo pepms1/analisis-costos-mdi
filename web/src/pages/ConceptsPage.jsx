@@ -16,6 +16,26 @@ const initialForm = {
   description: "",
 };
 
+function normalizeText(value = "") {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isApproximateMatch(conceptName, searchValue) {
+  const normalizedConcept = normalizeText(conceptName);
+  const normalizedSearch = normalizeText(searchValue);
+
+  if (!normalizedSearch) return true;
+  if (!normalizedConcept) return false;
+  if (normalizedConcept.includes(normalizedSearch) || normalizedSearch.includes(normalizedConcept)) return true;
+
+  const searchTokens = normalizedSearch.split(/\s+/).filter(Boolean);
+  return searchTokens.every((token) => normalizedConcept.includes(token));
+}
+
 function ConceptsPage() {
   const { user } = useAuth();
   const canManage = ["superadmin", "admin"].includes(user?.role);
@@ -41,6 +61,13 @@ function ConceptsPage() {
       setCategories([]);
     });
   }, [statusFilter]);
+
+  const categoryFocusedItems = items.filter((item) => (form.categoryId ? item.categoryId === form.categoryId : true));
+  const filteredItems = categoryFocusedItems.filter((item) =>
+    isApproximateMatch(item.name, form.name)
+  );
+  const similarConcepts = filteredItems.filter((item) => item.id !== editingId);
+  const hasPossibleDuplicate = Boolean(form.categoryId && form.name.trim() && similarConcepts.length);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -181,6 +208,11 @@ function ConceptsPage() {
               <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" />
             </label>
             {error ? <div className="alert error">{error}</div> : null}
+            {hasPossibleDuplicate ? (
+              <div className="alert">
+                Ya existe(n) {similarConcepts.length} concepto(s) parecido(s) en esta categoría. Revísalos en la tabla para evitar duplicados.
+              </div>
+            ) : null}
             <div className="button-row">
               <button type="submit" className="primary-button">
                 {editingId ? "Actualizar" : "Guardar"}
@@ -207,6 +239,18 @@ function ConceptsPage() {
           </div>
         )}
 
+        <div className="card">
+          <h3>Coincidencias en tiempo real</h3>
+          <p className="muted">
+            Se filtra automáticamente por la categoría y el texto del concepto mientras capturas.
+          </p>
+          <ul className="muted">
+            <li>Categoría seleccionada: {form.categoryId ? categories.find((c) => (c.id || c._id) === form.categoryId)?.name || "—" : "Todas"}</li>
+            <li>Texto buscado: {form.name.trim() || "—"}</li>
+            <li>Resultados visibles: {filteredItems.length}</li>
+          </ul>
+        </div>
+
         <DataTable
           columns={[
             { key: "name", label: "Nombre" },
@@ -232,7 +276,7 @@ function ConceptsPage() {
                 ]
               : []),
           ]}
-          rows={items}
+          rows={filteredItems}
         />
       </div>
       <div className="card form-grid">
