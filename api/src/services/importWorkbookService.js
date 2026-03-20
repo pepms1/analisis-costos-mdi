@@ -7,12 +7,13 @@ import { AppError } from "../utils/AppError.js";
 const STORAGE_DIR = path.resolve(process.cwd(), "api/.import_uploads");
 
 const PYTHON_PARSER = String.raw`
-import sys, os, json, csv, io, zipfile, re
+import sys, os, json, csv, io, zipfile
 import xml.etree.ElementTree as ET
 
 FILE_PATH = sys.argv[1]
 MODE = sys.argv[2]
 SHEET = sys.argv[3] if len(sys.argv) > 3 else None
+LIMIT_ARG = sys.argv[4] if len(sys.argv) > 4 else ""
 
 
 def normalize_text(value):
@@ -80,14 +81,16 @@ def parse_sheets(zf):
     return sheets
 
 
-def parse_worksheet_rows(zf, sheet_path, shared_strings, limit=200):
+def parse_worksheet_rows(zf, sheet_path, shared_strings, limit=None):
     ns = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     root = ET.fromstring(zf.read(sheet_path))
-    rows = []
-    max_col = 0
+    row_entries = []
 
     for row in root.findall(".//a:sheetData/a:row", ns):
+        row_number = int(row.attrib.get("r", len(row_entries) + 1))
         row_values = {}
+        max_col = 0
+
         for cell in row.findall("a:c", ns):
             cell_ref = cell.attrib.get("r", "A1")
             col = to_col_index(cell_ref)
@@ -111,27 +114,29 @@ def parse_worksheet_rows(zf, sheet_path, shared_strings, limit=200):
 
             row_values[col] = normalize_text(value)
 
-        if max_col >= 0:
-            expanded = [""] * (max_col + 1)
-            for c, v in row_values.items():
-                if c < len(expanded):
-                    expanded[c] = v
-            rows.append(expanded)
-        if len(rows) >= limit:
+        expanded = [""] * (max_col + 1)
+        for c, v in row_values.items():
+            if c < len(expanded):
+                expanded[c] = v
+
+        row_entries.append({"rowNumber": row_number, "values": expanded})
+
+        if limit is not None and len(row_entries) >= limit:
             break
 
-    return rows
+    return row_entries
 
 
-def count_non_empty(rows):
+def count_non_empty(row_entries):
     total = 0
-    for row in rows:
+    for entry in row_entries:
+        row = entry.get("values", [])
         if any(normalize_text(v) != "" for v in row):
             total += 1
     return total
 
 
-def parse_csv_rows(file_path, limit=200):
+def parse_csv_rows(file_path, limit=None):
     with open(file_path, "rb") as f:
         blob = f.read()
 
@@ -158,36 +163,42 @@ def parse_csv_rows(file_path, limit=200):
 
     reader = csv.reader(io.StringIO(text), dialect)
     rows = []
-    for row in reader:
-        rows.append([normalize_text(v) for v in row])
-        if len(rows) >= limit:
+    for index, row in enumerate(reader):
+        rows.append({"rowNumber": index + 1, "values": [normalize_text(v) for v in row]})
+        if limit is not None and len(rows) >= limit:
             break
     return rows
 
 
-def parse_xlsx(file_path):
+def parse_xlsx(file_path, limit=None):
     with zipfile.ZipFile(file_path, "r") as zf:
         shared = parse_shared_strings(zf)
         sheets = parse_sheets(zf)
 
         out = []
         for sheet in sheets:
-            rows = parse_worksheet_rows(zf, sheet["path"], shared, limit=250)
-            out.append({"name": sheet["name"], "rows": rows, "rowCount": count_non_empty(rows)})
+            row_entries = parse_worksheet_rows(zf, sheet["path"], shared, limit=limit)
+            out.append({
+                "name": sheet["name"],
+                "rowEntries": row_entries,
+                "rows": [entry["values"] for entry in row_entries],
+                "rowCount": count_non_empty(row_entries),
+            })
         return out
 
 
-def parse_any(file_path):
+def parse_any(file_path, limit=None):
     ext = os.path.splitext(file_path.lower())[1]
     if ext == ".xlsx":
-        return parse_xlsx(file_path)
+        return parse_xlsx(file_path, limit=limit)
 
-    rows = parse_csv_rows(file_path, limit=250)
-    return [{"name": "Datos", "rows": rows, "rowCount": count_non_empty(rows)}]
+    row_entries = parse_csv_rows(file_path, limit=limit)
+    return [{"name": "Datos", "rowEntries": row_entries, "rows": [entry["values"] for entry in row_entries], "rowCount": count_non_empty(row_entries)}]
 
 
 try:
-    sheets = parse_any(FILE_PATH)
+    parsed_limit = int(LIMIT_ARG) if LIMIT_ARG else None
+    sheets = parse_any(FILE_PATH, limit=parsed_limit)
 except Exception as exc:
     print(json.dumps({"ok": False, "error": str(exc)}))
     sys.exit(0)
@@ -206,7 +217,9 @@ if selected is None and sheets:
     selected = sheets[0]
 
 if selected is None:
-    print(json.dumps({"ok": True, "sheet": None, "rows": []}))
+    print(json.dumps({"ok": True, "sheet": None, "rows": [], "rowEntries": []}))
+elif MODE == "rows":
+    print(json.dumps({"ok": True, "sheet": selected["name"], "rowEntries": selected["rowEntries"], "rowCount": selected["rowCount"]}))
 else:
     print(json.dumps({"ok": True, "sheet": selected["name"], "rows": selected["rows"][:30], "rowCount": selected["rowCount"]}))
 `;
@@ -215,10 +228,15 @@ async function ensureStorageDir() {
   await fs.mkdir(STORAGE_DIR, { recursive: true });
 }
 
-function runParser(filePath, mode, sheetName = "") {
-  const result = spawnSync("python", ["-c", PYTHON_PARSER, filePath, mode, sheetName], {
+function runParser(filePath, mode, sheetName = "", limit = null) {
+  const args = ["-c", PYTHON_PARSER, filePath, mode, sheetName];
+  if (limit !== null && limit !== undefined) {
+    args.push(String(limit));
+  }
+
+  const result = spawnSync("python", args, {
     encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024,
+    maxBuffer: 20 * 1024 * 1024,
   });
 
   if (result.error) {
@@ -277,6 +295,15 @@ export function getWorkbookSheets(filePath) {
 
 export function getWorkbookPreview(filePath, sheetName) {
   return runParser(filePath, "preview", sheetName);
+}
+
+export function getWorkbookSheetRows(filePath, sheetName) {
+  const payload = runParser(filePath, "rows", sheetName);
+  return {
+    sheet: payload.sheet,
+    rowCount: payload.rowCount,
+    rowEntries: payload.rowEntries || [],
+  };
 }
 
 export function resolveStoredFilePath(storageName) {
