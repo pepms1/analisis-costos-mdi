@@ -4,9 +4,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 
 const primaryLinks = [
-  { to: "/consulta", label: "Consulta", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/consulta", label: "Consulta analítica", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/consulta-historicos", label: "Consulta de históricos", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/captura-rapida", label: "Captura rápida", permission: PERMISSIONS.PRICES_QUICK_CAPTURE },
-  { to: "/historicos", label: "Históricos", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/historicos", label: "Históricos (avanzado)", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/inflacion", label: "Inflación", permission: PERMISSIONS.INFLATION_VIEW },
 ];
 

@@ -12,6 +12,7 @@ import PriceRecordsPage from "./pages/PriceRecordsPage";
 import AdjustmentsPage from "./pages/AdjustmentsPage";
 import ConsultaPage from "./pages/ConsultaPage";
 import QuickCapturePage from "./pages/QuickCapturePage";
+import HistoricalConsultPage from "./pages/HistoricalConsultPage";
 import { PERMISSIONS } from "./utils/permissions";
 
 function App() {
@@ -28,6 +29,14 @@ function App() {
       >
         <Route index element={<ConsultaPage />} />
         <Route path="consulta" element={<ConsultaPage />} />
+        <Route
+          path="consulta-historicos"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_VIEW]}>
+              <HistoricalConsultPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="captura-rapida"
           element={
