@@ -47,7 +47,7 @@ function AppLayout() {
       <aside className="sidebar">
         <div>
           <div className="brand-badge">MDI</div>
-          <h1>Análisis de costos MDI</h1>
+          <h1>Analisis de Costos Grupo MDI</h1>
           <p className="sidebar-copy">Consulta primero. Captura rápido. Administración como soporte.</p>
         </div>
 

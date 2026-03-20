@@ -34,7 +34,7 @@ function LoginPage() {
     <div className="auth-shell">
       <div className="auth-panel">
         <p className="eyebrow">Acceso seguro</p>
-        <h1>Analisis de costos MDI</h1>
+        <h1>Analisis de Costos Grupo MDI</h1>
         <p className="muted">
           Ingresa con tu cuenta para administrar historicos, catalogos, ajustes y comparativos.
         </p>
