@@ -6,6 +6,7 @@ import {
   getImportSessionPreview,
   listImportRows,
   listImportSessionSheets,
+  parseImportSessionRows,
   saveImportRowDecision,
   saveImportSessionMapping,
   uploadImportSessionFile,
@@ -39,6 +40,7 @@ router.post(
   validate(saveImportSessionMappingSchema),
   asyncHandler(saveImportSessionMapping)
 );
+router.post("/import-sessions/:id/parse", requirePermission(PERMISSIONS.PRICES_EDIT), asyncHandler(parseImportSessionRows));
 router.get("/import-sessions/:id/rows", requirePermission(PERMISSIONS.PRICES_VIEW), asyncHandler(listImportRows));
 router.patch(
   "/import-rows/:id/decision",

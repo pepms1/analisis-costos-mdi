@@ -4,10 +4,20 @@ import { ImportRowDecision } from "../models/ImportRowDecision.js";
 import { AppError } from "../utils/AppError.js";
 import {
   getWorkbookPreview,
+  getWorkbookSheetRows,
   getWorkbookSheets,
   resolveStoredFilePath,
   storeImportFile,
 } from "../services/importWorkbookService.js";
+import {
+  getMappedCell,
+  isLikelySummaryRow,
+  isRowCompletelyEmpty,
+  normalizeText,
+  normalizeUnit,
+  parseFlexibleDate,
+  parseFlexibleNumber,
+} from "../utils/importParsing.js";
 
 const MAPPING_CANDIDATES = {
   concept: ["concepto", "descripción", "descripcion", "partida", "insumo", "producto", "servicio"],
@@ -244,6 +254,191 @@ export async function saveImportSessionMapping(req, res) {
   res.json({ item: serializeSession(session) });
 }
 
+function toDisplayValue(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function buildParsedRow({ session, rowEntry, mapping }) {
+  const rowValues = rowEntry.values || [];
+  const rawConcept = getMappedCell(rowValues, mapping.concept);
+  const rawUnit = getMappedCell(rowValues, mapping.unit);
+  const rawQuantity = getMappedCell(rowValues, mapping.quantity);
+  const rawUnitPrice = getMappedCell(rowValues, mapping.unitPrice);
+  const rawAmount = getMappedCell(rowValues, mapping.amount);
+  const rawSupplier = getMappedCell(rowValues, mapping.supplier);
+  const rawDate = getMappedCell(rowValues, mapping.date);
+  const rawCategory = getMappedCell(rowValues, mapping.originalCategory);
+
+  const conceptInfo = normalizeText(rawConcept);
+  const unitInfo = normalizeUnit(rawUnit);
+  const quantity = parseFlexibleNumber(rawQuantity);
+  const unitPrice = parseFlexibleNumber(rawUnitPrice);
+  const amount = parseFlexibleNumber(rawAmount);
+  const parsedDate = parseFlexibleDate(rawDate);
+
+  const warnings = [];
+  const errors = [];
+
+  if (!conceptInfo.normalized) {
+    if (quantity === null && unitPrice === null && amount === null) {
+      errors.push("Fila sin concepto y sin datos numéricos mínimos");
+    } else {
+      warnings.push("Fila sin concepto claro");
+    }
+  }
+
+  if (rawDate && parsedDate.warning) {
+    warnings.push(parsedDate.warning);
+  }
+
+  if (rawQuantity && quantity === null) warnings.push("Cantidad no interpretable");
+  if (rawUnitPrice && unitPrice === null) warnings.push("Precio unitario no interpretable");
+  if (rawAmount && amount === null) warnings.push("Importe no interpretable");
+
+  const parseStatus = errors.length ? "error" : warnings.length ? "warning" : "parsed";
+
+  return {
+    sessionId: session.id,
+    sheetRowNumber: rowEntry.rowNumber,
+    rawJson: {
+      rowValues,
+      normalized: {
+        concept: conceptInfo.normalized,
+        unit: unitInfo.normalized,
+        quantity,
+        unitPrice,
+        amount,
+        supplier: normalizeText(rawSupplier).normalized,
+        category: normalizeText(rawCategory).normalized,
+        dateIso: parsedDate.iso,
+      },
+      warnings,
+      errors,
+    },
+    rawConcept,
+    rawUnit: toDisplayValue(rawUnit),
+    rawQuantity: toDisplayValue(rawQuantity),
+    rawUnitPrice: toDisplayValue(rawUnitPrice),
+    rawAmount: toDisplayValue(rawAmount),
+    rawSupplier: toDisplayValue(rawSupplier),
+    rawDate: toDisplayValue(rawDate),
+    rawCategory: toDisplayValue(rawCategory),
+    normalizedConcept: conceptInfo.normalized,
+    parseStatus,
+    matchStatus: "pending",
+    confidenceScore: 0,
+  };
+}
+
+export async function parseImportSessionRows(req, res) {
+  const session = await ImportSession.findById(req.params.id);
+
+  if (!session) {
+    throw new AppError("Import session not found", 404);
+  }
+
+  if (!session.optionsJson?.fileStorageName) {
+    throw new AppError("La sesión no tiene archivo cargado", 400);
+  }
+
+  if (!session.sheetName) {
+    throw new AppError("La sesión no tiene hoja seleccionada", 400);
+  }
+
+  if (!session.columnMappingJson || !Object.keys(session.columnMappingJson).length) {
+    throw new AppError("La sesión no tiene mapeo de columnas guardado", 400);
+  }
+
+  const filePath = resolveStoredFilePath(getSessionStorageName(session));
+  const sheetPayload = getWorkbookSheetRows(filePath, session.sheetName);
+  const rowEntries = sheetPayload.rowEntries || [];
+
+  const startRow = Number(session.optionsJson?.dataStartRowIndex) || 2;
+  const ignoreEmptyRows = session.optionsJson?.ignoreEmptyRows !== false;
+
+  let totalReviewed = 0;
+  let totalIgnored = 0;
+  let totalWarnings = 0;
+  let totalErrors = 0;
+
+  const docs = [];
+
+  rowEntries.forEach((rowEntry) => {
+    if (rowEntry.rowNumber < startRow) {
+      return;
+    }
+
+    totalReviewed += 1;
+
+    if (ignoreEmptyRows && isRowCompletelyEmpty(rowEntry.values)) {
+      totalIgnored += 1;
+      return;
+    }
+
+    const tentativeConcept = getMappedCell(rowEntry.values, session.columnMappingJson?.concept);
+
+    if (isLikelySummaryRow(tentativeConcept)) {
+      totalIgnored += 1;
+      return;
+    }
+
+    const rowDoc = buildParsedRow({
+      session,
+      rowEntry,
+      mapping: session.columnMappingJson || {},
+    });
+
+
+    if (rowDoc.parseStatus === "warning") totalWarnings += 1;
+    if (rowDoc.parseStatus === "error") totalErrors += 1;
+
+    docs.push(rowDoc);
+  });
+
+  await ImportRow.deleteMany({ sessionId: session.id });
+
+  if (docs.length) {
+    await ImportRow.insertMany(docs, { ordered: false });
+  }
+
+  session.status = "parsed";
+  session.optionsJson = {
+    ...(session.optionsJson || {}),
+    lastParsedAt: new Date().toISOString(),
+    parseSummary: {
+      totalReviewed,
+      totalCreated: docs.length,
+      totalIgnored,
+      totalWarnings,
+      totalErrors,
+    },
+  };
+  await session.save();
+
+  res.json({
+    summary: {
+      totalReviewed,
+      totalCreated: docs.length,
+      totalIgnored,
+      totalWarnings,
+      totalErrors,
+    },
+    sample: docs.slice(0, 20).map((row) => ({
+      sheetRowNumber: row.sheetRowNumber,
+      concept: row.rawConcept,
+      unit: row.rawUnit,
+      quantity: row.rawQuantity,
+      unitPrice: row.rawUnitPrice,
+      amount: row.rawAmount,
+      supplier: row.rawSupplier,
+      date: row.rawDate,
+      parseStatus: row.parseStatus,
+    })),
+    item: serializeSession(session),
+  });
+}
+
 export async function listImportRows(req, res) {
   const session = await ImportSession.findById(req.params.id).select("_id");
 
@@ -251,7 +446,14 @@ export async function listImportRows(req, res) {
     throw new AppError("Import session not found", 404);
   }
 
-  const items = await ImportRow.find({ sessionId: session.id }).sort({ sheetRowNumber: 1, createdAt: 1 }).lean();
+  const parseStatusFilter = req.query.parseStatus?.toString();
+  const query = { sessionId: session.id };
+
+  if (parseStatusFilter) {
+    query.parseStatus = parseStatusFilter;
+  }
+
+  const items = await ImportRow.find(query).sort({ sheetRowNumber: 1, createdAt: 1 }).lean();
 
   res.json({
     items: items.map((row) => ({

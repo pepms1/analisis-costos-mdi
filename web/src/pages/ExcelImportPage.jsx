@@ -41,6 +41,10 @@ function ExcelImportPage() {
   const [ignoreEmptyRows, setIgnoreEmptyRows] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [parseSummary, setParseSummary] = useState(null);
+  const [parseRows, setParseRows] = useState([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -61,6 +65,18 @@ function ExcelImportPage() {
     setColumnMapping(item.detectedMapping || {});
   }
 
+  async function loadParsedRows(sessionId) {
+    if (!sessionId) return;
+
+    setRowsLoading(true);
+    try {
+      const response = await apiRequest(`/import-sessions/${sessionId}/rows`);
+      setParseRows(response.items || []);
+    } finally {
+      setRowsLoading(false);
+    }
+  }
+
   async function handleFileUpload(event) {
     const file = event.target.files?.[0];
 
@@ -71,6 +87,8 @@ function ExcelImportPage() {
     setLoading(true);
     setError("");
     setSuccess("");
+    setParseSummary(null);
+    setParseRows([]);
 
     try {
       const fileBase64 = await readFileBase64(file);
@@ -106,7 +124,7 @@ function ExcelImportPage() {
         await loadPreview(sessionId, firstSheet);
       }
 
-      setSuccess("Archivo cargado correctamente. Ajusta el mapeo y guarda la configuración.");
+      setSuccess("Archivo cargado correctamente. Ajusta el mapeo, guarda y luego procesa filas.");
     } catch (uploadError) {
       setError(uploadError.message || "No se pudo cargar el archivo");
     } finally {
@@ -145,9 +163,7 @@ function ExcelImportPage() {
     setSuccess("");
 
     try {
-      const cleanedMapping = Object.fromEntries(
-        MAPPING_FIELDS.map((field) => [field.key, columnMapping[field.key] || null])
-      );
+      const cleanedMapping = Object.fromEntries(MAPPING_FIELDS.map((field) => [field.key, columnMapping[field.key] || null]));
 
       const response = await apiRequest(`/import-sessions/${session.id}/mapping`, {
         method: "POST",
@@ -161,7 +177,7 @@ function ExcelImportPage() {
       });
 
       setSession(response.item);
-      setSuccess("Configuración guardada. La sesión quedó lista para el siguiente stage de parseo.");
+      setSuccess("Configuración guardada. Ahora puedes ejecutar el parseo real de filas.");
     } catch (saveError) {
       setError(saveError.message || "No se pudo guardar el mapeo");
     } finally {
@@ -169,11 +185,38 @@ function ExcelImportPage() {
     }
   }
 
+  async function handleParseRows() {
+    if (!session?.id) {
+      setError("No hay sesión activa para procesar.");
+      return;
+    }
+
+    setParsing(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await apiRequest(`/import-sessions/${session.id}/parse`, { method: "POST" });
+      setParseSummary(response.summary || null);
+      setSession(response.item || session);
+      await loadParsedRows(session.id);
+      setSuccess("Parseo ejecutado. Se regeneraron las filas staging de esta sesión.");
+    } catch (parseError) {
+      setError(parseError.message || "No se pudo procesar la sesión");
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  function renderStatusBadge(status) {
+    return <span className={`status-chip status-chip-${status || "pending"}`}>{status || "pending"}</span>;
+  }
+
   return (
     <section className="page-shell">
       <PageHeader
         title="Importación asistida desde Excel"
-        description="Carga real de archivo, lectura de hojas, preview inicial y mapeo manual para preparar el parseo del siguiente stage."
+        description="Stage 3: parseo real hacia staging, normalización base y visualización inicial de resultados parseados."
       />
 
       <article className="card import-assistant-card">
@@ -181,13 +224,7 @@ function ExcelImportPage() {
           <label className="file-picker" htmlFor="excel-file-input">
             Seleccionar archivo (.xlsx / .xls / .csv)
           </label>
-          <input
-            id="excel-file-input"
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleFileUpload}
-            disabled={loading}
-          />
+          <input id="excel-file-input" type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} disabled={loading} />
           <p className="muted">{selectedFileName ? `Archivo cargado: ${selectedFileName}` : "Aún no hay archivo cargado."}</p>
         </div>
 
@@ -214,21 +251,11 @@ function ExcelImportPage() {
             <div className="mapping-options-grid">
               <label>
                 Fila de encabezados
-                <input
-                  type="number"
-                  min="1"
-                  value={headerRowIndex}
-                  onChange={(event) => setHeaderRowIndex(event.target.value)}
-                />
+                <input type="number" min="1" value={headerRowIndex} onChange={(event) => setHeaderRowIndex(event.target.value)} />
               </label>
               <label>
                 Fila inicial de datos
-                <input
-                  type="number"
-                  min="1"
-                  value={dataStartRowIndex}
-                  onChange={(event) => setDataStartRowIndex(event.target.value)}
-                />
+                <input type="number" min="1" value={dataStartRowIndex} onChange={(event) => setDataStartRowIndex(event.target.value)} />
               </label>
             </div>
             <label className="checkline">
@@ -285,10 +312,71 @@ function ExcelImportPage() {
 
         <div className="button-row">
           <button type="button" className="primary-button" onClick={handleSaveMapping} disabled={saving || loading || !session?.id}>
-            {saving ? "Guardando..." : "Guardar configuración y continuar"}
+            {saving ? "Guardando..." : "Guardar configuración"}
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleParseRows}
+            disabled={parsing || saving || loading || !session?.id || session?.status === "uploaded"}
+          >
+            {parsing ? "Procesando..." : "Procesar filas"}
           </button>
           <p className="muted">Estado sesión: {session?.status || "sin sesión"}</p>
         </div>
+
+        {parseSummary ? (
+          <section className="import-panel card-subtle">
+            <h3>Resumen de parseo</h3>
+            <div className="parse-summary-grid">
+              <p>Revisadas: <strong>{parseSummary.totalReviewed}</strong></p>
+              <p>Creadas: <strong>{parseSummary.totalCreated}</strong></p>
+              <p>Ignoradas: <strong>{parseSummary.totalIgnored}</strong></p>
+              <p>Warnings: <strong>{parseSummary.totalWarnings}</strong></p>
+              <p>Errores: <strong>{parseSummary.totalErrors}</strong></p>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="import-panel card-subtle">
+          <div className="preview-header">
+            <h3>Filas staging parseadas</h3>
+            <span className="muted">{rowsLoading ? "Cargando..." : `${parseRows.length} filas en staging`}</span>
+          </div>
+          <div className="preview-table-wrap">
+            <table className="preview-table">
+              <thead>
+                <tr>
+                  <th>Fila Excel</th>
+                  <th>Concepto</th>
+                  <th>Unidad</th>
+                  <th>Cantidad</th>
+                  <th>P.U.</th>
+                  <th>Importe</th>
+                  <th>Proveedor</th>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parseRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.sheetRowNumber}</td>
+                    <td>{row.rawConcept || "—"}</td>
+                    <td>{row.rawUnit || row.rawJson?.normalized?.unit || "—"}</td>
+                    <td>{row.rawQuantity || row.rawJson?.normalized?.quantity || "—"}</td>
+                    <td>{row.rawUnitPrice || row.rawJson?.normalized?.unitPrice || "—"}</td>
+                    <td>{row.rawAmount || row.rawJson?.normalized?.amount || "—"}</td>
+                    <td>{row.rawSupplier || "—"}</td>
+                    <td>{row.rawDate || row.rawJson?.normalized?.dateIso || "—"}</td>
+                    <td>{renderStatusBadge(row.parseStatus)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!parseRows.length ? <p className="muted">Sin filas parseadas aún. Guarda mapping y ejecuta “Procesar filas”.</p> : null}
+          </div>
+        </section>
       </article>
     </section>
   );
