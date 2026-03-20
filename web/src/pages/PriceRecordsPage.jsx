@@ -138,7 +138,7 @@ function PriceRecordsPage() {
 
   return (
     <section>
-      <PageHeader title="Historicos" description="Captura manual de precios con soporte base para medidas y normalizacion." />
+      <PageHeader title="Históricos (avanzado)" description="Vista administrativa para edición detallada y filtros avanzados de históricos." />
 
       <div className="content-grid">
         {canManage ? (
