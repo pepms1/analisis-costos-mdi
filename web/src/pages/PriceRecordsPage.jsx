@@ -7,9 +7,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { formatCurrency, formatDate } from "../utils/formatters";
 
-const getToday = () => new Date().toISOString().slice(0, 10);
 const getDefaultYear = () => new Date().getFullYear().toString();
-const getYearStartDate = (year) => `${year}-01-01`;
+const getYearMidDate = (year) => `${year}-07-01`;
 
 const initialForm = {
   mainType: "material",
@@ -18,7 +17,7 @@ const initialForm = {
   supplierId: "",
   projectId: "",
   unit: "pieza",
-  priceDate: getToday(),
+  priceDate: getYearMidDate(getDefaultYear()),
   pricingMode: "unit_price",
   amount: "",
   location: "",
@@ -37,25 +36,32 @@ function PriceRecordsPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [form, setForm] = useState(initialForm);
-  const [filters, setFilters] = useState({ projectId: "" });
   const [projectSearch, setProjectSearch] = useState("");
   const [editingId, setEditingId] = useState("");
   const [error, setError] = useState("");
   const [captureYear, setCaptureYear] = useState(getDefaultYear());
 
-  async function loadPage(projectFilterId = filters.projectId) {
+  async function loadRecords({ year, categoryId, supplierId } = {}) {
     const query = new URLSearchParams();
-    if (projectFilterId) query.set("projectId", projectFilterId);
+    if (categoryId) query.set("categoryId", categoryId);
+    if (supplierId) query.set("supplierId", supplierId);
+    if (year && /^\d{4}$/.test(year)) {
+      query.set("dateFrom", `${year}-01-01`);
+      query.set("dateTo", `${year}-12-31`);
+    }
 
-    const [recordsData, categoriesData, conceptsData, suppliersData, projectsData] = await Promise.all([
-      apiRequest(`/price-records${query.toString() ? `?${query.toString()}` : ""}`),
+    const recordsData = await apiRequest(`/price-records${query.toString() ? `?${query.toString()}` : ""}`);
+    setItems(recordsData.items);
+  }
+
+  async function loadCatalogs() {
+    const [categoriesData, conceptsData, suppliersData, projectsData] = await Promise.all([
       apiRequest("/categories"),
       apiRequest("/concepts"),
       apiRequest("/suppliers"),
       apiRequest("/projects"),
     ]);
 
-    setItems(recordsData.items);
     setCategories(categoriesData.items);
     setConcepts(conceptsData.items);
     setSuppliers(suppliersData.items);
@@ -63,7 +69,7 @@ function PriceRecordsPage() {
   }
 
   useEffect(() => {
-    loadPage().catch(() => {
+    Promise.all([loadCatalogs(), loadRecords()]).catch(() => {
       setItems([]);
       setCategories([]);
       setConcepts([]);
@@ -71,6 +77,14 @@ function PriceRecordsPage() {
       setProjects([]);
     });
   }, []);
+
+  useEffect(() => {
+    loadRecords({
+      year: captureYear,
+      categoryId: form.categoryId,
+      supplierId: form.supplierId,
+    }).catch(() => setItems([]));
+  }, [captureYear, form.categoryId, form.supplierId]);
 
   const filteredConcepts = concepts.filter((concept) => (form.categoryId ? concept.categoryId === form.categoryId : true));
 
@@ -89,7 +103,7 @@ function PriceRecordsPage() {
     setCaptureYear(currentYear);
     setForm({
       ...initialForm,
-      priceDate: getYearStartDate(currentYear),
+      priceDate: getYearMidDate(currentYear),
     });
     setEditingId("");
     setError("");
@@ -143,7 +157,11 @@ function PriceRecordsPage() {
 
       clearRecordFieldsAndKeepContext();
       setEditingId("");
-      await loadPage();
+      await loadRecords({
+        year: captureYear,
+        categoryId: form.categoryId,
+        supplierId: form.supplierId,
+      });
     } catch (submitError) {
       setError(submitError.message);
     }
@@ -159,15 +177,14 @@ function PriceRecordsPage() {
         clearRecordFieldsAndKeepContext();
         setEditingId("");
       }
-      await loadPage();
+      await loadRecords({
+        year: captureYear,
+        categoryId: form.categoryId,
+        supplierId: form.supplierId,
+      });
     } catch (deleteError) {
       setError(deleteError.message);
     }
-  }
-
-  async function handleFilterSubmit(event) {
-    event.preventDefault();
-    await loadPage(filters.projectId);
   }
 
   return (
@@ -204,7 +221,7 @@ function PriceRecordsPage() {
                       const nextYear = e.target.value;
                       setCaptureYear(nextYear);
                       if (/^\d{4}$/.test(nextYear)) {
-                        setForm((prev) => ({ ...prev, priceDate: getYearStartDate(nextYear) }));
+                        setForm((prev) => ({ ...prev, priceDate: getYearMidDate(nextYear) }));
                       }
                     }}
                   />
@@ -351,41 +368,21 @@ function PriceRecordsPage() {
         )}
 
         <div className="page-shell">
-          <form className="card form-grid" onSubmit={handleFilterSubmit}>
-            <h3>Filtros</h3>
-            <label className="field">
-              <span>Obra</span>
-              <select value={filters.projectId} onChange={(e) => setFilters((prev) => ({ ...prev, projectId: e.target.value }))}>
-                <option value="">Todas las obras</option>
-                {projects.map((project) => (
-                  <option key={project.id || project._id} value={project.id || project._id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="button-row">
-              <button type="submit" className="primary-button">
-                Aplicar filtros
-              </button>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={async () => {
-                  setFilters({ projectId: "" });
-                  setProjectSearch("");
-                  await loadPage("");
-                }}
-              >
-                Limpiar
-              </button>
-            </div>
-          </form>
-
+          <div className="card">
+            <h3>Históricos relacionados en tiempo real</h3>
+            <p className="muted">
+              La lista se actualiza con el contexto de captura actual: año ({captureYear || "todos"}), categoría y proveedor.
+            </p>
+          </div>
           <DataTable
             columns={[
               { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
               { key: "projectName", label: "Obra" },
+              {
+                key: "categoryId",
+                label: "Categoría",
+                render: (value) => categories.find((category) => (category.id || category._id) === value)?.name || "—",
+              },
               { key: "conceptName", label: "Concepto" },
               { key: "supplierName", label: "Proveedor" },
               { key: "mainType", label: "Tipo" },
