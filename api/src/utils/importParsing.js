@@ -164,3 +164,103 @@ export function getMappedCell(rowValues = [], mappingKey) {
 
   return cleanTextValue(rowValues[index]);
 }
+
+const DIMENSION_PATTERN =
+  /(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?/i;
+
+const SURFACE_KEYWORDS = [
+  "placa",
+  "tapa",
+  "loseta",
+  "piso",
+  "azulejo",
+  "panel",
+  "lamina",
+  "lámina",
+  "cristal",
+  "marmol",
+  "mármol",
+  "tablero",
+];
+
+const NON_SURFACE_KEYWORDS = ["ptr", "tubo", "viga", "cable", "polin", "polín"];
+
+function parseDimensionValue(raw) {
+  const parsed = Number(String(raw).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function inferDimensionUnit({ explicitUnit, first, second }) {
+  if (explicitUnit) return explicitUnit;
+
+  const hasDecimal = !Number.isInteger(first) || !Number.isInteger(second);
+  if (hasDecimal) return "m";
+  if (first > 10 && second > 10) return "cm";
+  return "m";
+}
+
+function convertToMeters(value, unit) {
+  if (unit === "mm") return value / 1000;
+  if (unit === "cm") return value / 100;
+  return value;
+}
+
+export function inferApplicationUnitSuggestion(conceptText = "") {
+  const normalized = normalizeText(conceptText).normalized;
+  if (!normalized) {
+    return { suggestedApplicationUnit: null, confidence: 0, reason: "Sin concepto para analizar" };
+  }
+
+  if (NON_SURFACE_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+    return { suggestedApplicationUnit: null, confidence: 0.85, reason: "Concepto lineal/estructural detectado" };
+  }
+
+  if (SURFACE_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+    return { suggestedApplicationUnit: "m2", confidence: 0.8, reason: "Concepto de superficie detectado" };
+  }
+
+  return { suggestedApplicationUnit: null, confidence: 0.35, reason: "Sin señal clara de aplicación geométrica" };
+}
+
+export function detectEmbeddedDimensions(conceptText = "") {
+  const rawText = cleanTextValue(conceptText);
+  const normalizedText = normalizeText(conceptText).normalized;
+  const textToInspect = `${rawText} ${normalizedText}`.trim();
+  const match = textToInspect.match(DIMENSION_PATTERN);
+
+  if (!match) {
+    return {
+      detectedDimensions: null,
+      applicationSuggestion: inferApplicationUnitSuggestion(textToInspect),
+    };
+  }
+
+  const first = parseDimensionValue(match[1]);
+  const second = parseDimensionValue(match[3]);
+  if (first === null || second === null) {
+    return {
+      detectedDimensions: null,
+      applicationSuggestion: inferApplicationUnitSuggestion(textToInspect),
+    };
+  }
+
+  const explicitUnit = (match[2] || match[4] || "").toLowerCase() || null;
+  const sourceUnit = inferDimensionUnit({ explicitUnit, first, second });
+  const lengthM = convertToMeters(first, sourceUnit);
+  const widthM = convertToMeters(second, sourceUnit);
+  const areaM2 = lengthM * widthM;
+  const inferredByValue = explicitUnit ? 0 : Number.isInteger(first) && Number.isInteger(second) && first > 10 && second > 10;
+  const baseConfidence = explicitUnit ? 0.95 : inferredByValue ? 0.75 : 0.65;
+
+  return {
+    detectedDimensions: {
+      rawPattern: match[0].replace(/\s+/g, " ").trim(),
+      sourceUnit,
+      lengthM: Number(lengthM.toFixed(6)),
+      widthM: Number(widthM.toFixed(6)),
+      areaM2: Number(areaM2.toFixed(6)),
+      confidence: baseConfidence,
+    },
+    applicationSuggestion: inferApplicationUnitSuggestion(textToInspect),
+  };
+}

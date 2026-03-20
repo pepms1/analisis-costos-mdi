@@ -180,5 +180,17 @@ export const saveImportRowDecisionSchema = z.object({
   finalDate: z.string().nullable().optional(),
   finalWorkId: z.string().nullable().optional(),
   finalNotes: z.string().optional().default(""),
+  finalMeasurementsJson: z
+    .object({
+      lengthM: z.number().positive().nullable().optional(),
+      widthM: z.number().positive().nullable().optional(),
+      sourceUnit: z.enum(["mm", "cm", "m"]).nullable().optional(),
+      areaM2: z.number().nonnegative().nullable().optional(),
+      applicationUnit: z.string().nullable().optional(),
+      rawPattern: z.string().optional(),
+      confidence: z.number().min(0).max(1).optional(),
+    })
+    .nullable()
+    .optional(),
   savedHistoricId: z.string().nullable().optional(),
 });
