@@ -154,6 +154,10 @@ p {
   align-items: start;
 }
 
+.concepts-layout .concepts-table-wrap {
+  grid-column: 1 / -1;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

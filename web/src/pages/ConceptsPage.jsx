@@ -21,7 +21,8 @@ function normalizeText(value = "") {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .trim();
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function isApproximateMatch(conceptName, searchValue) {
@@ -67,11 +68,24 @@ function ConceptsPage() {
     isApproximateMatch(item.name, form.name)
   );
   const similarConcepts = filteredItems.filter((item) => item.id !== editingId);
+  const normalizedFormName = normalizeText(form.name);
+  const exactDuplicate = items.find(
+    (item) =>
+      item.id !== editingId &&
+      item.categoryId === form.categoryId &&
+      normalizeText(item.name) === normalizedFormName
+  );
+  const hasExactDuplicate = Boolean(form.categoryId && normalizedFormName && exactDuplicate);
   const hasPossibleDuplicate = Boolean(form.categoryId && form.name.trim() && similarConcepts.length);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+
+    if (hasExactDuplicate) {
+      setError(`No se puede guardar porque ya existe "${exactDuplicate.name}" en esta categoría.`);
+      return;
+    }
 
     const payload = {
       ...form,
@@ -141,7 +155,7 @@ function ConceptsPage() {
     <section>
       <PageHeader title="Conceptos" description="Base configurable para conceptos simples o dimensionales." />
 
-      <div className="content-grid">
+      <div className="content-grid concepts-layout">
         {canManage ? (
           <form className="card form-grid" onSubmit={handleSubmit}>
             <h3>{editingId ? "Editar concepto" : "Nuevo concepto"}</h3>
@@ -208,13 +222,18 @@ function ConceptsPage() {
               <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" />
             </label>
             {error ? <div className="alert error">{error}</div> : null}
+            {hasExactDuplicate ? (
+              <div className="alert error">
+                Duplicado exacto detectado en la misma categoría. Cambia el nombre para continuar.
+              </div>
+            ) : null}
             {hasPossibleDuplicate ? (
               <div className="alert">
                 Ya existe(n) {similarConcepts.length} concepto(s) parecido(s) en esta categoría. Revísalos en la tabla para evitar duplicados.
               </div>
             ) : null}
             <div className="button-row">
-              <button type="submit" className="primary-button">
+              <button type="submit" className="primary-button" disabled={hasExactDuplicate}>
                 {editingId ? "Actualizar" : "Guardar"}
               </button>
               {editingId ? (
@@ -251,33 +270,35 @@ function ConceptsPage() {
           </ul>
         </div>
 
-        <DataTable
-          columns={[
-            { key: "name", label: "Nombre" },
-            { key: "categoryName", label: "Categoria" },
-            { key: "mainType", label: "Tipo" },
-            { key: "calculationType", label: "Calculo" },
-            { key: "primaryUnit", label: "Unidad" },
-            { key: "requiresDimensions", label: "Dimensiones" },
-            { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
-            ...(canManage
-              ? [
-                  {
-                    key: "actions",
-                    label: "Acciones",
-                    render: (_value, row) => (
-                      <CrudActions
-                        onEdit={() => handleEdit(row)}
-                        onToggleActive={() => handleToggleActive(row)}
-                        isActive={row.isActive}
-                      />
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-          rows={filteredItems}
-        />
+        <div className="concepts-table-wrap">
+          <DataTable
+            columns={[
+              { key: "categoryName", label: "Categoria" },
+              { key: "name", label: "Nombre" },
+              { key: "mainType", label: "Tipo principal" },
+              { key: "primaryUnit", label: "Unidad principal" },
+              { key: "status", label: "Estatus", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
+              { key: "calculationType", label: "Calculo" },
+              { key: "requiresDimensions", label: "Dimensiones" },
+              ...(canManage
+                ? [
+                    {
+                      key: "actions",
+                      label: "Acciones",
+                      render: (_value, row) => (
+                        <CrudActions
+                          onEdit={() => handleEdit(row)}
+                          onToggleActive={() => handleToggleActive(row)}
+                          isActive={row.isActive}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+            rows={filteredItems}
+          />
+        </div>
       </div>
       <div className="card form-grid">
         <label className="field">

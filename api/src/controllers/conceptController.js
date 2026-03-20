@@ -9,6 +9,31 @@ function ensureValidObjectId(value, fieldName) {
   }
 }
 
+function normalizeConceptName(value = "") {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function sanitizeConceptName(value = "") {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+async function ensureUniqueConceptName({ categoryId, name, excludingId = null }) {
+  const duplicate = await Concept.findOne({
+    categoryId,
+    normalizedName: normalizeConceptName(name),
+    ...(excludingId ? { _id: { $ne: excludingId } } : {}),
+  }).select("name");
+
+  if (duplicate) {
+    throw new AppError("Ya existe un concepto con ese nombre dentro de esta categoría.", 409);
+  }
+}
+
 export async function listConcepts(req, res) {
   const status = req.query.status || "active";
   const query = {};
@@ -38,6 +63,8 @@ export async function listConcepts(req, res) {
 export async function createConcept(req, res) {
   ensureValidObjectId(req.validatedBody.categoryId, "categoryId");
 
+  const sanitizedName = sanitizeConceptName(req.validatedBody.name);
+
   const category = await Category.findById(req.validatedBody.categoryId);
 
   if (!category) {
@@ -48,8 +75,14 @@ export async function createConcept(req, res) {
     throw new AppError("Category mainType must match concept mainType", 400);
   }
 
+  await ensureUniqueConceptName({
+    categoryId: req.validatedBody.categoryId,
+    name: sanitizedName,
+  });
+
   const item = await Concept.create({
     ...req.validatedBody,
+    name: sanitizedName,
     createdBy: req.user.id,
     updatedBy: req.user.id,
   });
@@ -61,6 +94,8 @@ export async function updateConcept(req, res) {
   ensureValidObjectId(req.params.id, "conceptId");
   ensureValidObjectId(req.validatedBody.categoryId, "categoryId");
 
+  const sanitizedName = sanitizeConceptName(req.validatedBody.name);
+
   const category = await Category.findById(req.validatedBody.categoryId);
 
   if (!category) {
@@ -71,10 +106,17 @@ export async function updateConcept(req, res) {
     throw new AppError("Category mainType must match concept mainType", 400);
   }
 
+  await ensureUniqueConceptName({
+    categoryId: req.validatedBody.categoryId,
+    name: sanitizedName,
+    excludingId: req.params.id,
+  });
+
   const item = await Concept.findByIdAndUpdate(
     req.params.id,
     {
       ...req.validatedBody,
+      name: sanitizedName,
       updatedBy: req.user.id,
     },
     { new: true, runValidators: true }
