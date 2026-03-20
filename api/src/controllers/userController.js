@@ -1,9 +1,21 @@
 import { User } from "../models/User.js";
 import { AppError } from "../utils/AppError.js";
 
+function toPayload(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    email: item.email,
+    role: item.role,
+    isActive: item.isActive,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 export async function listUsers(_req, res) {
   const items = await User.find().select("-passwordHash").sort({ createdAt: -1 });
-  res.json({ items });
+  res.json({ items: items.map(toPayload) });
 }
 
 export async function createUser(req, res) {
@@ -22,14 +34,58 @@ export async function createUser(req, res) {
     role,
   });
 
-  res.status(201).json({
-    item: {
-      id: item.id,
-      name: item.name,
-      email: item.email,
-      role: item.role,
-      isActive: item.isActive,
-      createdAt: item.createdAt,
-    },
+  res.status(201).json({ item: toPayload(item) });
+}
+
+export async function updateUser(req, res) {
+  const { name, email, role, password } = req.validatedBody;
+  const normalizedEmail = email.toLowerCase();
+
+  const existing = await User.findOne({
+    _id: { $ne: req.params.id },
+    email: normalizedEmail,
   });
+
+  if (existing) {
+    throw new AppError("Email already exists", 409);
+  }
+
+  const payload = {
+    name,
+    email: normalizedEmail,
+    role,
+  };
+
+  if (password) {
+    payload.passwordHash = await User.buildPasswordHash(password);
+  }
+
+  const item = await User.findByIdAndUpdate(req.params.id, payload, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!item) {
+    throw new AppError("User not found", 404);
+  }
+
+  res.json({ item: toPayload(item) });
+}
+
+export async function deactivateUser(req, res) {
+  if (req.user.id === req.params.id) {
+    throw new AppError("Cannot deactivate your own user", 400);
+  }
+
+  const item = await User.findByIdAndUpdate(
+    req.params.id,
+    { isActive: false },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("User not found", 404);
+  }
+
+  res.json({ item: toPayload(item) });
 }

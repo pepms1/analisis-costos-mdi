@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
+import CrudActions from "../components/CrudActions";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
@@ -61,6 +62,23 @@ function ProjectsPage() {
     setEditingId("");
     setForm(initialForm);
     setError("");
+  }
+
+
+
+  async function handleDelete(item) {
+    if (!window.confirm(`¿Seguro que deseas eliminar ${item.name}? Esta accion desactiva el registro.`)) return;
+
+    try {
+      setError("");
+      await apiRequest(`/projects/${item.id}`, { method: "DELETE" });
+      if (editingId === item.id) {
+        resetForm();
+      }
+      await loadItems();
+    } catch (deleteError) {
+      setError(deleteError.message);
+    }
   }
 
   async function handleSubmit(event) {
@@ -169,9 +187,11 @@ function ProjectsPage() {
                       key: "actions",
                       label: "Acciones",
                       render: (_value, row) => (
-                        <button type="button" className="ghost-button" onClick={() => handleEdit(row)}>
-                          Editar
-                        </button>
+                        <CrudActions
+                          onEdit={() => handleEdit(row)}
+                          onDelete={() => handleDelete(row)}
+                          disableDelete={!row.isActive}
+                        />
                       ),
                     },
                   ]

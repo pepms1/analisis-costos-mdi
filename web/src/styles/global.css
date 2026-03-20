@@ -211,6 +211,22 @@ p {
   color: #fff;
 }
 
+.danger-button {
+  border-color: rgba(178, 58, 72, 0.35);
+  color: var(--danger);
+}
+
+.danger-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .form-grid {
   display: grid;
   gap: 14px;

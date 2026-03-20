@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createProject,
+  deactivateProject,
   getProjectById,
   listProjects,
   updateProject,
@@ -16,5 +17,6 @@ router.get("/", asyncHandler(listProjects));
 router.get("/:id", asyncHandler(getProjectById));
 router.post("/", requireRoles("superadmin", "admin"), validate(createProjectSchema), asyncHandler(createProject));
 router.put("/:id", requireRoles("superadmin", "admin"), validate(updateProjectSchema), asyncHandler(updateProject));
+router.delete("/:id", requireRoles("superadmin", "admin"), asyncHandler(deactivateProject));
 
 export default router;

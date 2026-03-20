@@ -13,6 +13,13 @@ export const createUserSchema = z.object({
   role: z.enum(USER_ROLES),
 });
 
+export const updateUserSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  role: z.enum(USER_ROLES),
+  password: z.string().min(8).optional(),
+});
+
 export const createCategorySchema = z.object({
   name: z.string().min(2),
   mainType: z.enum(MAIN_TYPES),
@@ -42,6 +49,8 @@ export const createConceptSchema = z.object({
 
 export const updateConceptSchema = createConceptSchema;
 
+export const updateCategorySchema = createCategorySchema;
+
 export const createSupplierSchema = z.object({
   name: z.string().min(2),
   legalName: z.string().optional().default(""),
@@ -50,6 +59,8 @@ export const createSupplierSchema = z.object({
   email: z.string().optional().default(""),
   notes: z.string().optional().default(""),
 });
+
+export const updateSupplierSchema = createSupplierSchema;
 
 export const createProjectSchema = z.object({
   name: z.string().min(2),
@@ -93,6 +104,8 @@ export const createPriceRecordSchema = z.object({
   attributes: z.record(z.string(), z.any()).optional(),
 });
 
+export const updatePriceRecordSchema = createPriceRecordSchema;
+
 export const createAdjustmentSchema = z.object({
   name: z.string().min(2),
   adjustmentType: z.enum(ADJUSTMENT_TYPES),
@@ -106,6 +119,8 @@ export const createAdjustmentSchema = z.object({
     })
   ),
 });
+
+export const updateAdjustmentSchema = createAdjustmentSchema;
 
 export const createQuoteCheckSchema = z.object({
   conceptId: z.string().min(1),

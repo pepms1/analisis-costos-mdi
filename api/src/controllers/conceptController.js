@@ -81,3 +81,23 @@ export async function updateConcept(req, res) {
 
   res.json({ item });
 }
+
+
+export async function deactivateConcept(req, res) {
+  ensureValidObjectId(req.params.id, "conceptId");
+
+  const item = await Concept.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Concept not found", 404);
+  }
+
+  res.json({ item });
+}

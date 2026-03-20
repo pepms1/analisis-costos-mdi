@@ -119,3 +119,33 @@ export async function updateProject(req, res) {
     },
   });
 }
+
+
+export async function deactivateProject(req, res) {
+  const item = await Project.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Project not found", 404);
+  }
+
+  res.json({
+    item: {
+      id: item.id,
+      name: item.name,
+      code: item.code,
+      clientName: item.clientName,
+      location: item.location,
+      notes: item.notes,
+      isActive: item.isActive,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    },
+  });
+}
