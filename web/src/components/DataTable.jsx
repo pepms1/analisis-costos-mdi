@@ -5,9 +5,12 @@ function formatValue(value) {
 }
 
 function DataTable({ columns, rows, emptyLabel = "Sin datos disponibles" }) {
+  const getCellContent = (column, row) =>
+    column.render ? column.render(row[column.key], row) : formatValue(row[column.key]);
+
   return (
     <div className="card table-card">
-      <table>
+      <table className="desktop-table">
         <thead>
           <tr>
             {columns.map((column) => (
@@ -26,15 +29,30 @@ function DataTable({ columns, rows, emptyLabel = "Sin datos disponibles" }) {
             rows.map((row) => (
               <tr key={row.id || JSON.stringify(row)}>
                 {columns.map((column) => (
-                  <td key={column.key}>
-                    {column.render ? column.render(row[column.key], row) : formatValue(row[column.key])}
-                  </td>
+                  <td key={column.key}>{getCellContent(column, row)}</td>
                 ))}
               </tr>
             ))
           )}
         </tbody>
       </table>
+
+      <div className="mobile-table-cards">
+        {rows.length === 0 ? (
+          <div className="mobile-table-card empty-state">{emptyLabel}</div>
+        ) : (
+          rows.map((row) => (
+            <article className="mobile-table-card" key={row.id || JSON.stringify(row)}>
+              {columns.map((column) => (
+                <div className="mobile-table-row" key={column.key}>
+                  <p className="mobile-table-label">{column.label}</p>
+                  <div className="mobile-table-value">{getCellContent(column, row)}</div>
+                </div>
+              ))}
+            </article>
+          ))
+        )}
+      </div>
     </div>
   );
 }
