@@ -89,7 +89,7 @@ export const createPriceRecordSchema = z.object({
   unit: z.string().min(1),
   priceDate: z.string().min(1),
   pricingMode: z.enum(["unit_price", "total_price"]).optional(),
-  amount: z.number().positive(),
+  amount: z.union([z.number().positive(), z.string().min(1)]),
   location: z.string().optional().default(""),
   observations: z.string().optional().default(""),
   dimensions: z

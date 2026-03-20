@@ -4,6 +4,7 @@ import { PriceRecord } from "../models/PriceRecord.js";
 import { Project } from "../models/Project.js";
 import { Supplier } from "../models/Supplier.js";
 import { AppError } from "../utils/AppError.js";
+import { centsToAmount, parseMoneyInput } from "../utils/money.js";
 import { buildPricingPayload } from "../utils/normalization.js";
 
 export async function listPriceRecords(req, res) {
@@ -47,7 +48,8 @@ export async function listPriceRecords(req, res) {
       mainType: item.mainType,
       unit: item.unit,
       pricingMode: item.pricingMode,
-      amount: item.originalAmount,
+      amount: Number.isSafeInteger(item.originalAmountCents) ? centsToAmount(item.originalAmountCents) : item.originalAmount,
+      capturedAmount: item.capturedAmount || null,
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
       normalizedPrice: item.normalizedPrice,
@@ -106,11 +108,13 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     ...rest
   } = validatedBody;
 
+  const { cents: originalAmountCents, normalizedAmount, normalizedString } = parseMoneyInput(amount);
+
   const pricingPayload = buildPricingPayload({
     calculationType: concept.calculationType,
     dimensions,
     pricingMode: resolvePricingMode(mainType, pricingMode),
-    amount,
+    amount: normalizedAmount,
     requiresDimensions: concept.requiresDimensions,
   });
 
@@ -125,6 +129,9 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     dimensions,
     pricingMode: resolvePricingMode(mainType, pricingMode),
     attributes: attributes || {},
+    originalAmount: normalizedAmount,
+    originalAmountCents,
+    capturedAmount: normalizedString,
     ...pricingPayload,
     updatedBy: reqUserId,
   };

@@ -7,6 +7,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { formatCurrency, formatDate } from "../utils/formatters";
+import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
 const getDefaultYear = () => new Date().getFullYear().toString();
 const getYearMidDate = (year) => `${year}-07-01`;
@@ -135,6 +136,11 @@ function PriceRecordsPage() {
     event.preventDefault();
     setError("");
 
+    if (!isValidMoneyInput(form.amount)) {
+      setError("Monto inválido. Usa un número positivo con máximo 2 decimales.");
+      return;
+    }
+
     const payload = {
       mainType: form.mainType,
       categoryId: form.categoryId,
@@ -144,7 +150,7 @@ function PriceRecordsPage() {
       unit: form.unit,
       priceDate: form.priceDate,
       pricingMode: effectivePricingMode,
-      amount: Number(form.amount),
+      amount: normalizeMoneyDraft(form.amount),
       location: form.location,
       observations: form.observations,
       dimensions:
@@ -323,7 +329,14 @@ function PriceRecordsPage() {
             )}
             <label className="field">
               <span>{isLaborMainType ? "Sueldo / pago total" : "Monto"}</span>
-              <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                onBlur={(e) => setForm((prev) => ({ ...prev, amount: normalizeMoneyDraft(e.target.value) }))}
+                required
+              />
             </label>
             {requiresDimensions ? (
               <>
@@ -427,7 +440,7 @@ function PriceRecordsPage() {
                               unit: row.unit || "pieza",
                               priceDate: row.priceDate ? new Date(row.priceDate).toISOString().slice(0, 10) : initialForm.priceDate,
                               pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
-                              amount: row.amount || "",
+                              amount: row.capturedAmount || (row.amount ? normalizeMoneyDraft(String(row.amount)) : ""),
                               location: row.location || "",
                               observations: row.observations || "",
                               largo: row.dimensions?.largo || row.dimensions?.length || row.dimensions?.width || "",

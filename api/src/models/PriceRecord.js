@@ -12,6 +12,8 @@ const priceRecordSchema = new mongoose.Schema(
     priceDate: { type: Date, required: true },
     pricingMode: { type: String, enum: ["unit_price", "total_price"], required: true },
     originalAmount: { type: Number, required: true },
+    originalAmountCents: { type: Number, required: true },
+    capturedAmount: { type: String, required: true },
     unitPrice: { type: Number, default: null },
     totalPrice: { type: Number, default: null },
     projectName: { type: String, default: "" },

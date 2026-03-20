@@ -9,7 +9,8 @@
     "build": "node -e \"console.log('API build step not required')\"",
     "lint": "echo \"No lint configured yet\"",
     "seed:admin": "node scripts/seedAdmin.js",
-    "migrate:roles": "node scripts/migrateUserRoles.js"
+    "migrate:roles": "node scripts/migrateUserRoles.js",
+    "audit:price-records": "node scripts/findSuspiciousPriceRecords.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
