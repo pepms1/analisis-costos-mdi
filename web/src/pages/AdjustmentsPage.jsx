@@ -57,15 +57,10 @@ function AdjustmentsPage() {
   const [name, setName] = useState("Inflación anual");
   const [editingId, setEditingId] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
-  const [error, setError] = useState("");
-
-  async function loadItems() {
-    const data = await apiRequest(`/adjustments?status=${statusFilter}`);
-    setItems(data.items);
   const [status, setStatus] = useState({ error: "", success: "" });
 
   async function loadItems() {
-    const data = await apiRequest("/adjustments");
+    const data = await apiRequest(`/adjustments?status=${statusFilter}`);
     setItems(data.items || []);
   }
 
@@ -81,10 +76,7 @@ function AdjustmentsPage() {
     [items]
   );
 
-  const inflationItem = useMemo(
-    () => inflationItems.find((item) => item.isActive) || inflationItems[0],
-    [inflationItems]
-  );
+  const inflationItem = useMemo(() => inflationItems.find((item) => item.isActive) || inflationItems[0], [inflationItems]);
 
   const inflationHistoryRows = useMemo(
     () =>
@@ -138,30 +130,6 @@ function AdjustmentsPage() {
     }
   }
 
-  async function handleToggleActive(item) {
-    const shouldActivate = !item.isActive;
-    if (
-      !window.confirm(
-        shouldActivate
-          ? `¿Quieres reactivar este registro (${item.name})?`
-          : `¿Quieres desactivar este registro (${item.name})?`
-      )
-    ) return;
-
-    try {
-      setError("");
-      await apiRequest(shouldActivate ? `/adjustments/${item.id}/reactivate` : `/adjustments/${item.id}`, {
-        method: shouldActivate ? "PATCH" : "DELETE",
-      });
-      if (editingId === item.id) {
-        setEditingId("");
-        setForm(initialForm);
-      }
-      await loadItems();
-    } catch (deleteError) {
-      setError(deleteError.message);
-    }
-  }
   return (
     <section className="page-shell">
       <PageHeader
@@ -197,67 +165,11 @@ function AdjustmentsPage() {
                 step="0.01"
               />
             </div>
-          </form>
-        ) : (
-          <div className="card">
-            <h3>Consulta de ajustes</h3>
-            <p className="muted">Tu rol actual solo tiene permisos de lectura en este modulo.</p>
-          </div>
-        )}
-
-        <DataTable
-          columns={[
-            { key: "name", label: "Nombre" },
-            { key: "adjustmentType", label: "Tipo" },
-            { key: "scopeType", label: "Alcance" },
-            { key: "status", label: "Estado", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
-            ...(canManage
-              ? [
-                  {
-                    key: "actions",
-                    label: "Acciones",
-                    render: (_value, row) => (
-                      <CrudActions
-                        onEdit={() => {
-                          setEditingId(row.id);
-                          setForm({
-                            name: row.name || "",
-                            adjustmentType: row.adjustmentType || "inflation",
-                            scopeType: row.scopeType || "general",
-                            factors: JSON.stringify(row.factors || [], null, 2),
-                          });
-                          setError("");
-                        }}
-                        onToggleActive={() => handleToggleActive(row)}
-                        isActive={row.isActive}
-                      />
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-          rows={items}
-        />
-      </div>
-      <div className="card form-grid">
-        <label className="field">
-          <span>Visibilidad</span>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="active">Solo activos</option>
-            <option value="inactive">Solo inactivos</option>
-            <option value="all">Todos</option>
-          </select>
-        </label>
-      </div>
           ))}
         </div>
 
         <div className="button-row">
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => setRows((prev) => [...prev, { year: "", rate: "" }])}
-          >
+          <button type="button" className="ghost-button" onClick={() => setRows((prev) => [...prev, { year: "", rate: "" }])}>
             Agregar año
           </button>
           <button
@@ -281,6 +193,17 @@ function AdjustmentsPage() {
           Guardar inflación
         </button>
       </form>
+
+      <div className="card form-grid">
+        <label className="field">
+          <span>Visibilidad</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="active">Solo activos</option>
+            <option value="inactive">Solo inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </label>
+      </div>
 
       <div className="card table-card">
         <h3>Valores anuales guardados</h3>
