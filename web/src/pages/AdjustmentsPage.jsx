@@ -7,13 +7,18 @@ import { useAuth } from "../contexts/AuthContext";
 const currentYear = new Date().getUTCFullYear();
 const defaultRows = [currentYear - 1, currentYear, currentYear + 1].map((year) => ({ year: String(year), rate: "" }));
 
+function getYearSortValue(value) {
+  const parsedYear = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isNaN(parsedYear) ? Number.POSITIVE_INFINITY : parsedYear;
+}
+
 function factorsToRows(factors = []) {
   return factors
     .map((factor) => ({
       year: String(factor.label || ""),
       rate: Number((Number(factor.factor) - 1) * 100).toFixed(2),
     }))
-    .sort((a, b) => Number(a.year) - Number(b.year));
+    .sort((a, b) => getYearSortValue(a.year) - getYearSortValue(b.year));
 }
 
 function rowsToFactors(rows) {
@@ -23,7 +28,7 @@ function rowsToFactors(rows) {
       label: String(row.year),
       factor: 1 + Number(row.rate) / 100,
     }))
-    .sort((a, b) => Number(a.label) - Number(b.label));
+    .sort((a, b) => getYearSortValue(a.label) - getYearSortValue(b.label));
 }
 
 function formatDate(value) {
@@ -93,7 +98,12 @@ function AdjustmentsPage() {
           isActive: item.isActive,
           updatedAt: item.updatedAt || item.createdAt,
         }))
-      ),
+      )
+      .sort((a, b) => {
+        const yearDiff = getYearSortValue(a.year) - getYearSortValue(b.year);
+        if (yearDiff !== 0) return yearDiff;
+        return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      }),
     [inflationItems]
   );
 
