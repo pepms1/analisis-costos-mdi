@@ -55,7 +55,7 @@ function AppLayout() {
           </button>
         </header>
 
-        <div className="page-shell">
+        <div className="layout-content">
           <Outlet />
         </div>
       </main>
