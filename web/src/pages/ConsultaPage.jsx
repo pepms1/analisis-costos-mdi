@@ -79,20 +79,23 @@ function formatDimensions(dimensions) {
 }
 
 function ConsultaPage() {
+  const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);
   const [records, setRecords] = useState([]);
   const [adjustments, setAdjustments] = useState([]);
-  const [filters, setFilters] = useState({ search: "", conceptId: "" });
+  const [filters, setFilters] = useState({ categoryId: "", search: "", conceptId: "" });
   const [todayQuote, setTodayQuote] = useState("");
   const [measureInputs, setMeasureInputs] = useState({ largo: "", ancho: "" });
 
   useEffect(() => {
-    Promise.all([apiRequest("/concepts"), apiRequest("/adjustments")])
-      .then(([conceptsData, adjustmentsData]) => {
+    Promise.all([apiRequest("/categories"), apiRequest("/concepts"), apiRequest("/adjustments")])
+      .then(([categoriesData, conceptsData, adjustmentsData]) => {
+        setCategories(categoriesData.items || []);
         setConcepts(conceptsData.items || []);
         setAdjustments(adjustmentsData.items || []);
       })
       .catch(() => {
+        setCategories([]);
         setConcepts([]);
         setAdjustments([]);
       });
@@ -109,14 +112,24 @@ function ConsultaPage() {
       .catch(() => setRecords([]));
   }, [filters.conceptId]);
 
-  const filteredConcepts = useMemo(() => {
-    const term = filters.search.trim().toLowerCase();
-    if (!term) return concepts.slice(0, 25);
+  useEffect(() => {
+    setFilters((prev) => ({ ...prev, conceptId: "" }));
+    setMeasureInputs({ largo: "", ancho: "" });
+    setTodayQuote("");
+  }, [filters.categoryId]);
 
-    return concepts
-      .filter((concept) => concept.isActive && concept.name.toLowerCase().includes(term))
-      .slice(0, 25);
-  }, [concepts, filters.search]);
+  const filteredConcepts = useMemo(() => {
+    if (!filters.categoryId) return [];
+    const term = filters.search.trim().toLowerCase();
+    const conceptsByCategory = concepts.filter(
+      (concept) => concept.isActive && concept.categoryId === filters.categoryId
+    );
+    if (!term) return conceptsByCategory.slice(0, 50);
+
+    return conceptsByCategory
+      .filter((concept) => concept.name.toLowerCase().includes(term))
+      .slice(0, 50);
+  }, [concepts, filters.categoryId, filters.search]);
 
   const { inflationSetting, inflationByYear } = useMemo(() => normalizeInflation(adjustments), [adjustments]);
   const selectedConcept = useMemo(
@@ -170,11 +183,27 @@ function ConsultaPage() {
 
       <div className="card form-grid compact-form">
         <label className="field">
+          <span>Selecciona una categoría</span>
+          <select
+            value={filters.categoryId}
+            onChange={(event) => setFilters((prev) => ({ ...prev, categoryId: event.target.value }))}
+          >
+            <option value="">Selecciona una categoría</option>
+            {categories.map((category) => (
+              <option key={category.id || category._id} value={category.id || category._id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
           <span>Buscar concepto</span>
           <input
             value={filters.search}
             onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
-            placeholder="Ej. block hueco 12x20x40"
+            placeholder={filters.categoryId ? "Ej. block hueco 12x20x40" : "Primero selecciona una categoría"}
+            disabled={!filters.categoryId}
           />
         </label>
 
@@ -182,13 +211,12 @@ function ConsultaPage() {
           <span>Selecciona un concepto</span>
           <select
             value={filters.conceptId}
-            onChange={(event) => {
-              setFilters((prev) => ({ ...prev, conceptId: event.target.value }));
-              setMeasureInputs({ largo: "", ancho: "" });
-              setTodayQuote("");
-            }}
+            onChange={(event) => setFilters((prev) => ({ ...prev, conceptId: event.target.value }))}
+            disabled={!filters.categoryId}
           >
-            <option value="">Selecciona un concepto</option>
+            <option value="">
+              {filters.categoryId ? "Selecciona un concepto" : "Selecciona una categoría primero"}
+            </option>
             {filteredConcepts.map((concept) => (
               <option key={concept.id} value={concept.id}>
                 {concept.name}
