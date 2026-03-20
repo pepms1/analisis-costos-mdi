@@ -10,7 +10,8 @@
     "lint": "echo \"No lint configured yet\"",
     "seed:admin": "node scripts/seedAdmin.js",
     "migrate:roles": "node scripts/migrateUserRoles.js",
-    "audit:price-records": "node scripts/findSuspiciousPriceRecords.js"
+    "audit:price-records": "node scripts/findSuspiciousPriceRecords.js",
+    "migrate:import-assistant-stage1": "node scripts/migrateImportAssistantStage1.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

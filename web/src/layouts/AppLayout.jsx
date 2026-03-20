@@ -7,6 +7,7 @@ const primaryLinks = [
   { to: "/consulta", label: "Análisis", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/consulta-historicos", label: "Consulta de Históricos", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/captura-rapida", label: "Captura rápida", permission: PERMISSIONS.PRICES_QUICK_CAPTURE },
+  { to: "/importacion-excel", label: "Importación asistida", permission: PERMISSIONS.PRICES_CREATE },
   { to: "/historicos", label: "Captura avanzada", permission: PERMISSIONS.PRICES_VIEW },
 ];
 
