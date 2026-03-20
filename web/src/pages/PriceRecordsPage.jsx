@@ -7,6 +7,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { formatCurrency, formatDate } from "../utils/formatters";
 
+const getToday = () => new Date().toISOString().slice(0, 10);
+const getDefaultYear = () => new Date().getFullYear().toString();
+const getYearStartDate = (year) => `${year}-01-01`;
+
 const initialForm = {
   mainType: "material",
   categoryId: "",
@@ -14,7 +18,7 @@ const initialForm = {
   supplierId: "",
   projectId: "",
   unit: "pieza",
-  priceDate: new Date().toISOString().slice(0, 10),
+  priceDate: getToday(),
   pricingMode: "unit_price",
   amount: "",
   location: "",
@@ -37,6 +41,7 @@ function PriceRecordsPage() {
   const [projectSearch, setProjectSearch] = useState("");
   const [editingId, setEditingId] = useState("");
   const [error, setError] = useState("");
+  const [captureYear, setCaptureYear] = useState(getDefaultYear());
 
   async function loadPage(projectFilterId = filters.projectId) {
     const query = new URLSearchParams();
@@ -79,6 +84,29 @@ function PriceRecordsPage() {
     (project) => project.isActive && project.name.toLowerCase().includes(projectSearch.trim().toLowerCase())
   );
 
+  function resetCaptureContext() {
+    const currentYear = getDefaultYear();
+    setCaptureYear(currentYear);
+    setForm({
+      ...initialForm,
+      priceDate: getYearStartDate(currentYear),
+    });
+    setEditingId("");
+    setError("");
+  }
+
+  function clearRecordFieldsAndKeepContext() {
+    setForm((prev) => ({
+      ...prev,
+      conceptId: "",
+      amount: "",
+      location: "",
+      observations: "",
+      largo: "",
+      ancho: "",
+    }));
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
@@ -113,7 +141,7 @@ function PriceRecordsPage() {
         body: JSON.stringify(payload),
       });
 
-      setForm(initialForm);
+      clearRecordFieldsAndKeepContext();
       setEditingId("");
       await loadPage();
     } catch (submitError) {
@@ -128,8 +156,8 @@ function PriceRecordsPage() {
       setError("");
       await apiRequest(`/price-records/${item.id}`, { method: "DELETE" });
       if (editingId === item.id) {
+        clearRecordFieldsAndKeepContext();
         setEditingId("");
-        setForm(initialForm);
       }
       await loadPage();
     } catch (deleteError) {
@@ -150,19 +178,46 @@ function PriceRecordsPage() {
         {canManage ? (
           <form className="card form-grid" onSubmit={handleSubmit}>
             <h3>{editingId ? "Editar historico" : "Nuevo historico"}</h3>
-            <label className="field">
-              <span>Tipo principal</span>
-              <select value={form.mainType} onChange={(e) => setForm({ ...form, mainType: e.target.value })}>
-                {MAIN_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="card">
+              <h4>Contexto de captura por lote</h4>
+              <p className="muted">Este contexto se mantiene entre guardados para acelerar el backfill masivo.</p>
+              <div className="subgrid">
+                <label className="field">
+                  <span>Tipo principal</span>
+                  <select value={form.mainType} onChange={(e) => setForm({ ...form, mainType: e.target.value })}>
+                    {MAIN_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Año backfill</span>
+                  <input
+                    type="number"
+                    min="1900"
+                    max="2100"
+                    step="1"
+                    value={captureYear}
+                    onChange={(e) => {
+                      const nextYear = e.target.value;
+                      setCaptureYear(nextYear);
+                      if (/^\d{4}$/.test(nextYear)) {
+                        setForm((prev) => ({ ...prev, priceDate: getYearStartDate(nextYear) }));
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
             <label className="field">
               <span>Categoria</span>
-              <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required>
+              <select
+                value={form.categoryId}
+                onChange={(e) => setForm({ ...form, categoryId: e.target.value, conceptId: "" })}
+                required
+              >
                 <option value="">Selecciona una categoria</option>
                 {categories.map((category) => (
                   <option key={category.id || category._id} value={category.id || category._id}>
@@ -214,7 +269,16 @@ function PriceRecordsPage() {
             </label>
             <label className="field">
               <span>Fecha</span>
-              <input type="date" value={form.priceDate} onChange={(e) => setForm({ ...form, priceDate: e.target.value })} required />
+              <input
+                type="date"
+                value={form.priceDate}
+                onChange={(e) => {
+                  const nextDate = e.target.value;
+                  setForm({ ...form, priceDate: nextDate });
+                  if (nextDate) setCaptureYear(nextDate.slice(0, 4));
+                }}
+                required
+              />
             </label>
             <label className="field">
               <span>Modo de precio</span>
@@ -259,7 +323,10 @@ function PriceRecordsPage() {
             {error ? <div className="alert error">{error}</div> : null}
             <div className="button-row">
               <button type="submit" className="primary-button">
-                {editingId ? "Actualizar" : "Guardar"}
+                {editingId ? "Actualizar y mantener contexto" : "Guardar y nuevo"}
+              </button>
+              <button type="button" className="ghost-button" onClick={resetCaptureContext}>
+                Reset contexto
               </button>
               {editingId ? (
                 <button
@@ -267,7 +334,7 @@ function PriceRecordsPage() {
                   className="ghost-button"
                   onClick={() => {
                     setEditingId("");
-                    setForm(initialForm);
+                    clearRecordFieldsAndKeepContext();
                     setError("");
                   }}
                 >
@@ -353,6 +420,9 @@ function PriceRecordsPage() {
                               ancho: row.dimensions?.ancho || row.dimensions?.height || row.dimensions?.width || "",
                               measurementUnit: row.dimensions?.measurementUnit || "cm",
                             });
+                            if (row.priceDate) {
+                              setCaptureYear(new Date(row.priceDate).toISOString().slice(0, 4));
+                            }
                             setError("");
                           }}
                           onDelete={() => handleDelete(row)}
