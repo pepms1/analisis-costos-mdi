@@ -4,6 +4,7 @@ import { CALCULATION_TYPES, MAIN_TYPES } from "../utils/constants.js";
 const conceptSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    normalizedName: { type: String, required: true, trim: true },
     categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
     mainType: { type: String, enum: MAIN_TYPES, required: true },
     primaryUnit: { type: String, required: true, trim: true },
@@ -32,5 +33,19 @@ const conceptSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+function normalizeConceptName(value = "") {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+conceptSchema.pre("validate", function setNormalizedName(next) {
+  this.normalizedName = normalizeConceptName(this.name);
+  next();
+});
 
 export const Concept = mongoose.model("Concept", conceptSchema);
