@@ -24,6 +24,33 @@ function rowsToFactors(rows) {
     .sort((a, b) => Number(a.label) - Number(b.label));
 }
 
+function formatDate(value) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleString("es-MX", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function adjustmentToForm(item) {
+  return {
+    id: item.id,
+    name: item.name || "Inflación anual",
+    rows: factorsToRows(item.factors),
+  };
+}
+
 function AdjustmentsPage() {
   const [items, setItems] = useState([]);
   const [rows, setRows] = useState(defaultRows);
@@ -46,9 +73,32 @@ function AdjustmentsPage() {
     loadItems().catch(() => setItems([]));
   }, [statusFilter]);
 
-  const inflationItem = useMemo(
-    () => items.find((item) => item.adjustmentType === "inflation" && item.scopeType === "general" && item.isActive),
+  const inflationItems = useMemo(
+    () =>
+      items
+        .filter((item) => item.adjustmentType === "inflation" && item.scopeType === "general")
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()),
     [items]
+  );
+
+  const inflationItem = useMemo(
+    () => inflationItems.find((item) => item.isActive) || inflationItems[0],
+    [inflationItems]
+  );
+
+  const inflationHistoryRows = useMemo(
+    () =>
+      inflationItems.flatMap((item) =>
+        (item.factors || []).map((factor, index) => ({
+          key: `${item.id}-${factor.label}-${index}`,
+          adjustmentId: item.id,
+          year: factor.label,
+          rate: ((Number(factor.factor) - 1) * 100).toFixed(2),
+          isActive: item.isActive,
+          updatedAt: item.updatedAt || item.createdAt,
+        }))
+      ),
+    [inflationItems]
   );
 
   useEffect(() => {
@@ -59,9 +109,10 @@ function AdjustmentsPage() {
       return;
     }
 
-    setRows(factorsToRows(inflationItem.factors));
-    setName(inflationItem.name || "Inflación anual");
-    setEditingId(inflationItem.id);
+    const form = adjustmentToForm(inflationItem);
+    setRows(form.rows.length ? form.rows : defaultRows);
+    setName(form.name);
+    setEditingId(form.id);
   }, [inflationItem]);
 
   async function handleSubmit(event) {
@@ -230,6 +281,40 @@ function AdjustmentsPage() {
           Guardar inflación
         </button>
       </form>
+
+      <div className="card table-card">
+        <h3>Valores anuales guardados</h3>
+        <p className="muted">Aquí puedes revisar y confirmar lo que ya quedó registrado.</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Año</th>
+              <th>Inflación (%)</th>
+              <th>Estatus</th>
+              <th>Última actualización</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inflationHistoryRows.length ? (
+              inflationHistoryRows.map((row) => (
+                <tr key={row.key}>
+                  <td>{row.year}</td>
+                  <td>{row.rate}</td>
+                  <td>{row.isActive ? "Activo" : "Inactivo"}</td>
+                  <td>{formatDate(row.updatedAt)}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="empty-state" colSpan={4}>
+                  Aún no hay inflaciones guardadas.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
