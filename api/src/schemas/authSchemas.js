@@ -173,7 +173,7 @@ export const saveImportSessionMappingSchema = z.object({
 });
 
 export const saveImportRowDecisionSchema = z.object({
-  decisionType: z.enum(["accept", "edit", "ignore"]),
+  decisionType: z.enum(["accepted", "edited", "ignored", "new"]),
   finalCategoryId: z.string().nullable().optional(),
   finalSupplierId: z.string().nullable().optional(),
   finalCost: z.number().nullable().optional(),

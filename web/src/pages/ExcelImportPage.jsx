@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { apiRequest } from "../api/client";
 
@@ -12,6 +12,18 @@ const MAPPING_FIELDS = [
   { key: "date", label: "Fecha", required: false },
   { key: "originalCategory", label: "Categoría original", required: false },
   { key: "observations", label: "Observaciones", required: false },
+];
+
+const REVIEW_FILTERS = [
+  { key: "all", label: "Todas" },
+  { key: "pending", label: "Pendientes" },
+  { key: "accepted", label: "Aceptadas" },
+  { key: "edited", label: "Editadas" },
+  { key: "ignored", label: "Ignoradas" },
+  { key: "high", label: "Alta confianza" },
+  { key: "medium", label: "Media" },
+  { key: "low", label: "Baja" },
+  { key: "no_match", label: "Sin coincidencia" },
 ];
 
 function readFileBase64(file) {
@@ -46,11 +58,58 @@ function ExcelImportPage() {
   const [parseSummary, setParseSummary] = useState(null);
   const [suggestionSummary, setSuggestionSummary] = useState(null);
   const [parseRows, setParseRows] = useState([]);
+  const [rowCounters, setRowCounters] = useState(null);
   const [suggesting, setSuggesting] = useState(false);
+  const [selectedRows, setSelectedRows] = useState({});
+  const [reviewFilter, setReviewFilter] = useState("all");
+  const [bulkCategoryId, setBulkCategoryId] = useState("");
+  const [bulkSupplierId, setBulkSupplierId] = useState("");
+  const [catalogs, setCatalogs] = useState({ categories: [], suppliers: [], projects: [] });
+  const [editingRow, setEditingRow] = useState(null);
+  const [editForm, setEditForm] = useState({
+    finalCategoryId: "",
+    finalSupplierId: "",
+    finalCost: "",
+    finalDate: "",
+    finalWorkId: "",
+    finalNotes: "",
+  });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const previewColumns = useMemo(() => preview?.columns || [], [preview]);
+
+  const visibleRows = useMemo(() => {
+    if (reviewFilter === "all") return parseRows;
+    if (["pending", "accepted", "edited", "ignored"].includes(reviewFilter)) {
+      return parseRows.filter((row) => row.reviewStatus === reviewFilter);
+    }
+    return parseRows.filter((row) => row.confidenceLabel === reviewFilter);
+  }, [parseRows, reviewFilter]);
+
+  const selectedIds = useMemo(() => Object.keys(selectedRows).filter((id) => selectedRows[id]), [selectedRows]);
+
+  useEffect(() => {
+    async function loadCatalogs() {
+      try {
+        const [categoriesResponse, suppliersResponse, projectsResponse] = await Promise.all([
+          apiRequest("/categories?status=active"),
+          apiRequest("/suppliers?status=active"),
+          apiRequest("/projects?activeOnly=1"),
+        ]);
+
+        setCatalogs({
+          categories: categoriesResponse.items || [],
+          suppliers: suppliersResponse.items || [],
+          projects: projectsResponse.items || [],
+        });
+      } catch {
+        // Catálogos opcionales para revisión manual.
+      }
+    }
+
+    loadCatalogs();
+  }, []);
 
   async function loadPreview(sessionId, sheetName) {
     if (!sessionId || !sheetName) {
@@ -74,6 +133,7 @@ function ExcelImportPage() {
     try {
       const response = await apiRequest(`/import-sessions/${sessionId}/rows`);
       setParseRows(response.items || []);
+      setRowCounters(response.counters || null);
     } finally {
       setRowsLoading(false);
     }
@@ -92,6 +152,7 @@ function ExcelImportPage() {
     setParseSummary(null);
     setSuggestionSummary(null);
     setParseRows([]);
+    setSelectedRows({});
 
     try {
       const fileBase64 = await readFileBase64(file);
@@ -235,15 +296,84 @@ function ExcelImportPage() {
     }
   }
 
+  async function applyDecision(rowId, payload) {
+    try {
+      setError("");
+      await apiRequest(`/import-rows/${rowId}/decision`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      await loadParsedRows(session?.id);
+    } catch (decisionError) {
+      setError(decisionError.message || "No se pudo guardar la decisión");
+    }
+  }
+
+  async function handleBulkAction(action) {
+    if (!session?.id || !selectedIds.length) return;
+
+    try {
+      setError("");
+      await apiRequest(`/import-sessions/${session.id}/decisions/bulk`, {
+        method: "POST",
+        body: JSON.stringify({
+          action,
+          rowIds: selectedIds,
+          categoryId: bulkCategoryId || null,
+          supplierId: bulkSupplierId || null,
+        }),
+      });
+      setSelectedRows({});
+      await loadParsedRows(session.id);
+    } catch (bulkError) {
+      setError(bulkError.message || "No se pudo ejecutar la acción masiva");
+    }
+  }
+
+  function openEditModal(row) {
+    setEditingRow(row);
+    setEditForm({
+      finalCategoryId: row.decision?.finalCategoryId || row.finalValues?.categoryId || "",
+      finalSupplierId: row.decision?.finalSupplierId || row.finalValues?.supplierId || "",
+      finalCost: row.decision?.finalCost ?? row.finalValues?.cost ?? "",
+      finalDate: row.decision?.finalDate ? String(row.decision.finalDate).slice(0, 10) : "",
+      finalWorkId: row.decision?.finalWorkId || row.finalValues?.workId || "",
+      finalNotes: row.decision?.finalNotes || "",
+    });
+  }
+
+  async function saveEditDecision() {
+    if (!editingRow) return;
+    await applyDecision(editingRow.id, {
+      decisionType: "edited",
+      finalCategoryId: editForm.finalCategoryId || null,
+      finalSupplierId: editForm.finalSupplierId || null,
+      finalCost: editForm.finalCost === "" ? null : Number(editForm.finalCost),
+      finalDate: editForm.finalDate || null,
+      finalWorkId: editForm.finalWorkId || null,
+      finalNotes: editForm.finalNotes || "",
+    });
+    setEditingRow(null);
+  }
+
   function renderStatusBadge(status) {
     return <span className={`status-chip status-chip-${status || "pending"}`}>{status || "pending"}</span>;
+  }
+
+  function renderConfidence(row) {
+    if (!row.suggestion) return <span className="status-chip confidence-chip-no_match">Sin match</span>;
+    return (
+      <span className={`status-chip confidence-chip-${row.confidenceLabel || "low"}`}>
+        {(row.suggestion?.score || 0).toFixed(2)} · {row.confidenceLabel || "low"}
+      </span>
+    );
   }
 
   return (
     <section className="page-shell">
       <PageHeader
         title="Importación asistida desde Excel"
-        description="Stage 3: parseo real hacia staging, normalización base y visualización inicial de resultados parseados."
+        description="Stage 5: revisión operativa por fila (aceptar, editar, ignorar), acciones masivas y persistencia en import_row_decisions."
       />
 
       <article className="card import-assistant-card">
@@ -315,28 +445,6 @@ function ExcelImportPage() {
           </div>
         </section>
 
-        <section className="import-panel card-subtle">
-          <div className="preview-header">
-            <h3>Preview inicial de la hoja</h3>
-            <span className="muted">Mostrando hasta 30 filas para inspección visual.</span>
-          </div>
-          <div className="preview-table-wrap">
-            <table className="preview-table">
-              <tbody>
-                {(preview?.rows || []).slice(0, 30).map((row, rowIndex) => (
-                  <tr key={`${rowIndex}-${row.join("|")}`}>
-                    <th>#{rowIndex + 1}</th>
-                    {row.map((value, columnIndex) => (
-                      <td key={`${rowIndex}-${columnIndex}`}>{value || "—"}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!preview?.rows?.length ? <p className="muted">Sin preview disponible todavía.</p> : null}
-          </div>
-        </section>
-
         <div className="button-row">
           <button type="button" className="primary-button" onClick={handleSaveMapping} disabled={saving || loading || !session?.id}>
             {saving ? "Guardando..." : "Guardar configuración"}
@@ -388,64 +496,158 @@ function ExcelImportPage() {
 
         <section className="import-panel card-subtle">
           <div className="preview-header">
-            <h3>Filas staging parseadas</h3>
-            <span className="muted">{rowsLoading ? "Cargando..." : `${parseRows.length} filas en staging`}</span>
+            <h3>Revisión de filas staging</h3>
+            <span className="muted">{rowsLoading ? "Cargando..." : `${visibleRows.length} filas visibles de ${parseRows.length}`}</span>
           </div>
+
+          <div className="review-filters">
+            {REVIEW_FILTERS.map((filter) => (
+              <button
+                type="button"
+                key={filter.key}
+                className={`chip-button ${reviewFilter === filter.key ? "chip-button-active" : ""}`}
+                onClick={() => setReviewFilter(filter.key)}
+              >
+                {filter.label}
+                <strong>{filter.key === "all" ? rowCounters?.total || 0 : rowCounters?.[filter.key] || 0}</strong>
+              </button>
+            ))}
+          </div>
+
+          <div className="bulk-toolbar">
+            <span className="muted">Seleccionadas: {selectedIds.length}</span>
+            <button type="button" onClick={() => handleBulkAction("accept")} disabled={!selectedIds.length}>Aceptar seleccionadas</button>
+            <button type="button" onClick={() => handleBulkAction("ignore")} disabled={!selectedIds.length}>Ignorar seleccionadas</button>
+            <select value={bulkSupplierId} onChange={(event) => setBulkSupplierId(event.target.value)}>
+              <option value="">Proveedor para seleccionadas</option>
+              {catalogs.suppliers.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => handleBulkAction("set_supplier")} disabled={!selectedIds.length || !bulkSupplierId}>Asignar proveedor</button>
+            <select value={bulkCategoryId} onChange={(event) => setBulkCategoryId(event.target.value)}>
+              <option value="">Categoría para seleccionadas</option>
+              {catalogs.categories.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => handleBulkAction("set_category")} disabled={!selectedIds.length || !bulkCategoryId}>Asignar categoría</button>
+          </div>
+
           <div className="preview-table-wrap">
             <table className="preview-table">
               <thead>
                 <tr>
+                  <th><input type="checkbox" checked={visibleRows.length > 0 && selectedIds.length === visibleRows.length} onChange={(event) => {
+                    const checked = event.target.checked;
+                    const next = {};
+                    visibleRows.forEach((row) => { next[row.id] = checked; });
+                    setSelectedRows(next);
+                  }} /></th>
                   <th>Fila Excel</th>
-                  <th>Concepto</th>
+                  <th>Concepto importado</th>
                   <th>Unidad</th>
                   <th>Cantidad</th>
-                  <th>P.U.</th>
-                  <th>Importe</th>
-                  <th>Proveedor</th>
-                  <th>Fecha</th>
+                  <th>P.U. leído</th>
                   <th>Categoría sugerida</th>
                   <th>Proveedor sugerido</th>
                   <th>Costo sugerido</th>
                   <th>Confianza</th>
-                  <th>Razones</th>
-                  <th>Estado</th>
+                  <th>Estado revisión</th>
+                  <th>Final / notas</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {parseRows.map((row) => (
+                {visibleRows.map((row) => (
                   <tr key={row.id}>
+                    <td>
+                      <input type="checkbox" checked={Boolean(selectedRows[row.id])} onChange={(event) => setSelectedRows((prev) => ({ ...prev, [row.id]: event.target.checked }))} />
+                    </td>
                     <td>{row.sheetRowNumber}</td>
-                    <td>{row.rawConcept || "—"}</td>
+                    <td className="cell-wrap">{row.rawConcept || "—"}</td>
                     <td>{row.rawUnit || row.rawJson?.normalized?.unit || "—"}</td>
                     <td>{row.rawQuantity || row.rawJson?.normalized?.quantity || "—"}</td>
                     <td>{row.rawUnitPrice || row.rawJson?.normalized?.unitPrice || "—"}</td>
-                    <td>{row.rawAmount || row.rawJson?.normalized?.amount || "—"}</td>
-                    <td>{row.rawSupplier || "—"}</td>
-                    <td>{row.rawDate || row.rawJson?.normalized?.dateIso || "—"}</td>
                     <td>{row.suggestion?.reasonJson?.matched?.categoryName || "—"}</td>
                     <td>{row.suggestion?.reasonJson?.matched?.supplierName || "—"}</td>
                     <td>{row.suggestion?.suggestedCost ?? "—"}</td>
-                    <td>
-                      {row.suggestion ? (
-                        <span className={`status-chip confidence-chip-${row.suggestion?.reasonJson?.confidenceLabel || "low"}`}>
-                          {(row.suggestion?.score || 0).toFixed(2)} · {row.suggestion?.reasonJson?.confidenceLabel || "low"}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                    <td>{renderConfidence(row)}</td>
+                    <td>{renderStatusBadge(row.reviewStatus)}</td>
+                    <td className="cell-wrap">{row.finalValues?.cost ?? "—"} · {row.finalValues?.notes || "sin notas"}</td>
+                    <td className="row-actions">
+                      <button
+                        type="button"
+                        disabled={row.parseStatus === "error"}
+                        onClick={() => applyDecision(row.id, { decisionType: "accepted" })}
+                      >
+                        Aceptar sugerencia
+                      </button>
+                      <button type="button" onClick={() => openEditModal(row)}>Editar</button>
+                      <button type="button" onClick={() => applyDecision(row.id, { decisionType: "ignored" })}>Ignorar</button>
+                      <button type="button" onClick={() => applyDecision(row.id, { decisionType: "new" })}>Volver pendiente</button>
                     </td>
-                    <td className="cell-wrap">
-                      {row.suggestion?.reasonJson?.reasons?.slice(0, 2).join(", ") || "Sin sugerencia"}
-                    </td>
-                    <td>{renderStatusBadge(row.parseStatus)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!parseRows.length ? <p className="muted">Sin filas parseadas aún. Guarda mapping y ejecuta “Procesar filas”.</p> : null}
+            {!visibleRows.length ? <p className="muted">No hay filas para este filtro.</p> : null}
           </div>
         </section>
       </article>
+
+      {editingRow ? (
+        <div className="simple-modal-backdrop" role="presentation">
+          <div className="simple-modal">
+            <h3>Editar fila #{editingRow.sheetRowNumber}</h3>
+            <div className="mapping-grid">
+              <label>
+                Categoría final
+                <select value={editForm.finalCategoryId} onChange={(event) => setEditForm((prev) => ({ ...prev, finalCategoryId: event.target.value }))}>
+                  <option value="">Sin categoría</option>
+                  {catalogs.categories.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Proveedor final
+                <select value={editForm.finalSupplierId} onChange={(event) => setEditForm((prev) => ({ ...prev, finalSupplierId: event.target.value }))}>
+                  <option value="">Sin proveedor</option>
+                  {catalogs.suppliers.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Obra final
+                <select value={editForm.finalWorkId} onChange={(event) => setEditForm((prev) => ({ ...prev, finalWorkId: event.target.value }))}>
+                  <option value="">Sin obra</option>
+                  {catalogs.projects.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Costo final
+                <input type="number" step="0.01" value={editForm.finalCost} onChange={(event) => setEditForm((prev) => ({ ...prev, finalCost: event.target.value }))} />
+              </label>
+              <label>
+                Fecha final
+                <input type="date" value={editForm.finalDate} onChange={(event) => setEditForm((prev) => ({ ...prev, finalDate: event.target.value }))} />
+              </label>
+              <label>
+                Notas
+                <input value={editForm.finalNotes} onChange={(event) => setEditForm((prev) => ({ ...prev, finalNotes: event.target.value }))} />
+              </label>
+            </div>
+            <div className="button-row">
+              <button type="button" className="primary-button" onClick={saveEditDecision}>Guardar edición</button>
+              <button type="button" onClick={() => setEditingRow(null)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

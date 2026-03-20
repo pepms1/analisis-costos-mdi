@@ -602,6 +602,97 @@ function buildSuggestionPayload({ row, candidate, conceptById, supplierById, cat
   };
 }
 
+function normalizeDecisionType(value = "") {
+  const mapping = {
+    accept: "accepted",
+    accepted: "accepted",
+    edit: "edited",
+    edited: "edited",
+    ignore: "ignored",
+    ignored: "ignored",
+    pending: "new",
+    new: "new",
+  };
+  return mapping[String(value).toLowerCase()] || "new";
+}
+
+function serializeDecision(decision) {
+  if (!decision) return null;
+  return {
+    id: decision._id?.toString() || decision.id,
+    importRowId: decision.importRowId,
+    decisionType: normalizeDecisionType(decision.decisionType),
+    finalCategoryId: decision.finalCategoryId,
+    finalSupplierId: decision.finalSupplierId,
+    finalCost: decision.finalCost,
+    finalDate: decision.finalDate,
+    finalWorkId: decision.finalWorkId,
+    finalNotes: decision.finalNotes || "",
+    savedHistoricId: decision.savedHistoricId,
+    createdBy: decision.createdBy,
+    createdAt: decision.createdAt,
+  };
+}
+
+function serializeSuggestion(suggestion) {
+  if (!suggestion) return null;
+  return {
+    id: suggestion._id.toString(),
+    suggestedCategoryId: suggestion.suggestedCategoryId,
+    suggestedSupplierId: suggestion.suggestedSupplierId,
+    suggestedCost: suggestion.suggestedCost,
+    suggestedDate: suggestion.suggestedDate,
+    suggestedHistoricId: suggestion.suggestedHistoricId,
+    suggestedWorkId: suggestion.suggestedWorkId,
+    score: suggestion.score,
+    reasonJson: suggestion.reasonJson,
+  };
+}
+
+function resolveFinalValues(row, suggestion, decision) {
+  const normalizedDecisionType = normalizeDecisionType(decision?.decisionType);
+  if (decision && ["accepted", "edited"].includes(normalizedDecisionType)) {
+    return {
+      source: "decision",
+      reviewStatus: normalizedDecisionType,
+      categoryId: decision.finalCategoryId || null,
+      supplierId: decision.finalSupplierId || null,
+      cost: decision.finalCost ?? null,
+      date: decision.finalDate || null,
+      workId: decision.finalWorkId || null,
+      notes: decision.finalNotes || "",
+    };
+  }
+
+  if (suggestion) {
+    return {
+      source: "suggestion",
+      reviewStatus: "pending",
+      categoryId: suggestion.suggestedCategoryId || null,
+      supplierId: suggestion.suggestedSupplierId || null,
+      cost: suggestion.suggestedCost ?? row.rawJson?.normalized?.unitPrice ?? null,
+      date: suggestion.suggestedDate || row.rawJson?.normalized?.dateIso || null,
+      workId: suggestion.suggestedWorkId || null,
+      notes: "",
+    };
+  }
+
+  return {
+    source: "empty",
+    reviewStatus: "pending",
+    categoryId: null,
+    supplierId: null,
+    cost: row.rawJson?.normalized?.unitPrice ?? null,
+    date: row.rawJson?.normalized?.dateIso || null,
+    workId: null,
+    notes: "",
+  };
+}
+
+function getReviewStatus(decision) {
+  return decision ? normalizeDecisionType(decision.decisionType) : "pending";
+}
+
 export async function generateImportSessionSuggestions(req, res) {
   const session = await ImportSession.findById(req.params.id);
 
@@ -821,6 +912,8 @@ export async function listImportRows(req, res) {
   }
 
   const parseStatusFilter = req.query.parseStatus?.toString();
+  const reviewStatusFilter = req.query.reviewStatus?.toString();
+  const confidenceFilter = req.query.confidence?.toString();
   const query = { sessionId: session.id };
 
   if (parseStatusFilter) {
@@ -828,17 +921,29 @@ export async function listImportRows(req, res) {
   }
 
   const items = await ImportRow.find(query).sort({ sheetRowNumber: 1, createdAt: 1 }).lean();
-  const suggestionItems = await ImportRowSuggestion.find({ importRowId: { $in: items.map((row) => row._id) } })
+  const rowIds = items.map((row) => row._id);
+  const suggestionItems = await ImportRowSuggestion.find({ importRowId: { $in: rowIds } })
     .sort({ createdAt: -1 })
     .lean();
+  const decisionItems = await ImportRowDecision.find({ importRowId: { $in: rowIds } }).lean();
 
   const suggestionByRowId = new Map();
   suggestionItems.forEach((suggestion) => {
     suggestionByRowId.set(String(suggestion.importRowId), suggestion);
   });
+  const decisionByRowId = new Map();
+  decisionItems.forEach((decision) => {
+    decisionByRowId.set(String(decision.importRowId), decision);
+  });
 
-  res.json({
-    items: items.map((row) => ({
+  const composed = items.map((row) => {
+    const suggestion = suggestionByRowId.get(String(row._id)) || null;
+    const decision = decisionByRowId.get(String(row._id)) || null;
+    const serializedSuggestion = serializeSuggestion(suggestion);
+    const serializedDecision = serializeDecision(decision);
+    const reviewStatus = getReviewStatus(decision);
+    const confidenceLabel = serializedSuggestion?.reasonJson?.confidenceLabel || "no_match";
+    return {
       id: row._id.toString(),
       sessionId: row.sessionId,
       sheetRowNumber: row.sheetRowNumber,
@@ -855,66 +960,160 @@ export async function listImportRows(req, res) {
       parseStatus: row.parseStatus,
       matchStatus: row.matchStatus,
       confidenceScore: row.confidenceScore,
-      suggestion: suggestionByRowId.has(String(row._id))
-        ? {
-            id: suggestionByRowId.get(String(row._id))._id.toString(),
-            suggestedCategoryId: suggestionByRowId.get(String(row._id)).suggestedCategoryId,
-            suggestedSupplierId: suggestionByRowId.get(String(row._id)).suggestedSupplierId,
-            suggestedCost: suggestionByRowId.get(String(row._id)).suggestedCost,
-            suggestedDate: suggestionByRowId.get(String(row._id)).suggestedDate,
-            suggestedHistoricId: suggestionByRowId.get(String(row._id)).suggestedHistoricId,
-            suggestedWorkId: suggestionByRowId.get(String(row._id)).suggestedWorkId,
-            score: suggestionByRowId.get(String(row._id)).score,
-            reasonJson: suggestionByRowId.get(String(row._id)).reasonJson,
-          }
-        : null,
+      confidenceLabel,
+      reviewStatus,
+      suggestion: serializedSuggestion,
+      decision: serializedDecision,
+      finalValues: resolveFinalValues(row, serializedSuggestion, serializedDecision),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    })),
+    };
+  });
+
+  const filtered = composed.filter((row) => {
+    if (reviewStatusFilter && row.reviewStatus !== reviewStatusFilter) return false;
+    if (confidenceFilter && row.confidenceLabel !== confidenceFilter) return false;
+    return true;
+  });
+
+  const counters = {
+    total: composed.length,
+    pending: composed.filter((row) => row.reviewStatus === "pending").length,
+    accepted: composed.filter((row) => row.reviewStatus === "accepted").length,
+    edited: composed.filter((row) => row.reviewStatus === "edited").length,
+    ignored: composed.filter((row) => row.reviewStatus === "ignored").length,
+    high: composed.filter((row) => row.confidenceLabel === "high").length,
+    medium: composed.filter((row) => row.confidenceLabel === "medium").length,
+    low: composed.filter((row) => row.confidenceLabel === "low").length,
+    noMatch: composed.filter((row) => row.confidenceLabel === "no_match").length,
+  };
+
+  res.json({
+    counters,
+    items: filtered,
   });
 }
 
 export async function saveImportRowDecision(req, res) {
-  const row = await ImportRow.findById(req.params.id).select("_id matchStatus parseStatus");
+  const { decision, reviewStatus } = await upsertRowDecision({
+    rowId: req.params.id,
+    payload: req.validatedBody,
+    userId: req.user.id,
+  });
 
+  res.json({
+    item: serializeDecision(decision),
+    reviewStatus,
+  });
+}
+
+export async function bulkSaveImportRowDecisions(req, res) {
+  const session = await ImportSession.findById(req.params.id).select("_id");
+  if (!session) {
+    throw new AppError("Import session not found", 404);
+  }
+
+  const { action, rowIds = [], categoryId = null, supplierId = null } = req.body || {};
+  if (!Array.isArray(rowIds) || !rowIds.length) {
+    throw new AppError("Debes enviar al menos una fila para acción masiva", 400);
+  }
+
+  const rows = await ImportRow.find({ _id: { $in: rowIds }, sessionId: session.id }).select("_id");
+  if (!rows.length) {
+    throw new AppError("No se encontraron filas válidas para la sesión", 400);
+  }
+
+  let decisionType = "edited";
+  if (action === "accept") decisionType = "accepted";
+  if (action === "ignore") decisionType = "ignored";
+  if (!["accept", "ignore", "set_supplier", "set_category"].includes(action)) {
+    throw new AppError("Acción masiva no soportada", 400);
+  }
+
+  const results = [];
+  for (const row of rows) {
+    const currentDecision = await ImportRowDecision.findOne({ importRowId: row.id }).lean();
+    const payload = {
+      decisionType,
+      finalCategoryId: currentDecision?.finalCategoryId || null,
+      finalSupplierId: currentDecision?.finalSupplierId || null,
+      finalCost: currentDecision?.finalCost ?? null,
+      finalDate: currentDecision?.finalDate ? new Date(currentDecision.finalDate).toISOString() : null,
+      finalWorkId: currentDecision?.finalWorkId || null,
+      finalNotes: currentDecision?.finalNotes || "",
+    };
+
+    if (action === "set_supplier") {
+      payload.finalSupplierId = supplierId;
+      payload.decisionType = "edited";
+    }
+    if (action === "set_category") {
+      payload.finalCategoryId = categoryId;
+      payload.decisionType = "edited";
+    }
+
+    const result = await upsertRowDecision({
+      rowId: row.id.toString(),
+      payload,
+      userId: req.user.id,
+    });
+    results.push(serializeDecision(result.decision));
+  }
+
+  res.json({ updated: results.length, items: results });
+}
+
+async function upsertRowDecision({ rowId, payload, userId }) {
+  const row = await ImportRow.findById(rowId).select("_id matchStatus parseStatus rawJson");
   if (!row) {
     throw new AppError("Import row not found", 404);
   }
 
+  const normalizedDecisionType = normalizeDecisionType(payload.decisionType);
+  const suggestion = await ImportRowSuggestion.findOne({ importRowId: row.id }).lean();
+
+  if (normalizedDecisionType === "accepted" && row.parseStatus === "error") {
+    throw new AppError("Las filas con error de parseo no se pueden aceptar. Puedes ignorarlas o editarlas.", 400);
+  }
+
+  if (normalizedDecisionType === "new") {
+    await ImportRowDecision.deleteOne({ importRowId: row.id });
+    row.matchStatus = suggestion ? "suggested" : "pending";
+    await row.save();
+    return { decision: null, reviewStatus: "pending" };
+  }
+
   const decisionPayload = {
-    ...req.validatedBody,
-    finalDate: req.validatedBody.finalDate ? new Date(req.validatedBody.finalDate) : null,
+    importRowId: row.id,
+    decisionType: normalizedDecisionType,
+    finalCategoryId: payload.finalCategoryId ?? null,
+    finalSupplierId: payload.finalSupplierId ?? null,
+    finalCost: payload.finalCost ?? null,
+    finalDate: payload.finalDate ? new Date(payload.finalDate) : null,
+    finalWorkId: payload.finalWorkId ?? null,
+    finalNotes: payload.finalNotes || "",
+    createdBy: userId,
   };
 
-  const decision = await ImportRowDecision.findOneAndUpdate(
-    { importRowId: row.id },
-    {
-      ...decisionPayload,
-      importRowId: row.id,
-      createdBy: req.user.id,
-    },
-    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-  );
+  if (normalizedDecisionType === "accepted") {
+    decisionPayload.finalCategoryId = suggestion?.suggestedCategoryId || decisionPayload.finalCategoryId;
+    decisionPayload.finalSupplierId = suggestion?.suggestedSupplierId || decisionPayload.finalSupplierId;
+    decisionPayload.finalCost = suggestion?.suggestedCost ?? row.rawJson?.normalized?.unitPrice ?? decisionPayload.finalCost;
+    decisionPayload.finalDate = suggestion?.suggestedDate || decisionPayload.finalDate;
+    decisionPayload.finalWorkId = suggestion?.suggestedWorkId || decisionPayload.finalWorkId;
+  }
 
-  row.matchStatus = req.validatedBody.decisionType === "ignore" ? "ignored" : "accepted";
+  const decision = await ImportRowDecision.findOneAndUpdate({ importRowId: row.id }, decisionPayload, {
+    upsert: true,
+    new: true,
+    runValidators: true,
+    setDefaultsOnInsert: true,
+  });
+
+  row.matchStatus = normalizedDecisionType === "ignored" ? "ignored" : normalizedDecisionType;
   await row.save();
 
-  res.json({
-    item: {
-      id: decision.id,
-      importRowId: decision.importRowId,
-      decisionType: decision.decisionType,
-      finalCategoryId: decision.finalCategoryId,
-      finalSupplierId: decision.finalSupplierId,
-      finalCost: decision.finalCost,
-      finalDate: decision.finalDate,
-      finalWorkId: decision.finalWorkId,
-      finalNotes: decision.finalNotes,
-      savedHistoricId: decision.savedHistoricId,
-      createdBy: decision.createdBy,
-      createdAt: decision.createdAt,
-    },
-  });
+  return { decision, reviewStatus: normalizedDecisionType };
 }
 
 export async function applyImportSession(req, res) {
