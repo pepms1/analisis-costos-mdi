@@ -4,6 +4,7 @@ import CrudActions from "../components/CrudActions";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 
 const initialForm = {
   name: "",
@@ -15,8 +16,8 @@ const initialForm = {
 };
 
 function SuppliersPage() {
-  const { user } = useAuth();
-  const canManage = ["superadmin", "admin"].includes(user?.role);
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission(PERMISSIONS.CATALOGS_MANAGE);
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");

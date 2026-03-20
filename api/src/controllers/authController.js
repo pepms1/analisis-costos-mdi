@@ -1,3 +1,4 @@
+import { getRolePermissions } from "../utils/permissions.js";
 import { User } from "../models/User.js";
 import { AppError } from "../utils/AppError.js";
 import { createAuthToken } from "../services/authService.js";
@@ -25,6 +26,7 @@ export async function login(req, res) {
       name: user.name,
       email: user.email,
       role: user.role,
+      permissions: getRolePermissions(user.role),
     },
   });
 }
@@ -36,6 +38,7 @@ export async function getCurrentUser(req, res) {
       name: req.user.name,
       email: req.user.email,
       role: req.user.role,
+      permissions: getRolePermissions(req.user.role),
       isActive: req.user.isActive,
     },
   });

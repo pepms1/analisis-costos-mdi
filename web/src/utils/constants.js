@@ -14,5 +14,6 @@ export const CALCULATION_TYPE_OPTIONS = [
 export const ROLE_OPTIONS = [
   { value: "superadmin", label: "superadmin" },
   { value: "admin", label: "admin" },
+  { value: "capturista", label: "capturista" },
   { value: "viewer", label: "viewer" },
 ];

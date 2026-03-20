@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
+import { getRolePermissions, hasAllPermissions, hasAnyPermission, hasPermission } from "../utils/permissions";
 
 const AuthContext = createContext(null);
 
@@ -17,7 +18,11 @@ export function AuthProvider({ children }) {
 
     apiRequest("/auth/me")
       .then((data) => {
-        setUser(data.user);
+        const nextUser = data.user;
+        setUser({
+          ...nextUser,
+          permissions: nextUser.permissions || getRolePermissions(nextUser.role),
+        });
       })
       .catch(() => {
         localStorage.removeItem("auth_token");
@@ -33,6 +38,9 @@ export function AuthProvider({ children }) {
       user,
       isLoading,
       isAuthenticated: Boolean(user),
+      hasPermission: (permission) => hasPermission(user, permission),
+      hasAnyPermission: (permissions) => hasAnyPermission(user, permissions),
+      hasAllPermissions: (permissions) => hasAllPermissions(user, permissions),
       async login(credentials) {
         const data = await apiRequest("/auth/login", {
           method: "POST",
@@ -40,7 +48,10 @@ export function AuthProvider({ children }) {
         });
 
         localStorage.setItem("auth_token", data.token);
-        setUser(data.user);
+        setUser({
+          ...data.user,
+          permissions: data.user.permissions || getRolePermissions(data.user.role),
+        });
         return data.user;
       },
       logout() {
