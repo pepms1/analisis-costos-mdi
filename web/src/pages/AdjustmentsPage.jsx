@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import CrudActions from "../components/CrudActions";
+import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
@@ -268,30 +269,23 @@ function AdjustmentsPage() {
         </label>
       </div>
 
-      <div className="card table-card">
-        <h3>Valores anuales guardados</h3>
-        <p className="muted">Aquí puedes revisar y confirmar lo que ya quedó registrado.</p>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Año</th>
-              <th>Inflación (%)</th>
-              <th>Estatus</th>
-              <th>Última actualización</th>
-              {canManageInflation ? <th>Acciones</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {inflationHistoryRows.length ? (
-              inflationHistoryRows.map((row) => (
-                <tr key={row.key}>
-                  <td>{row.year}</td>
-                  <td>{row.rate}</td>
-                  <td>{row.isActive ? "Activo" : "Inactivo"}</td>
-                  <td>{formatDate(row.updatedAt)}</td>
-                  {canManageInflation ? (
-                    <td>
+      <div className="page-shell">
+        <div className="card">
+          <h3>Valores anuales guardados</h3>
+          <p className="muted">Aquí puedes revisar y confirmar lo que ya quedó registrado.</p>
+        </div>
+        <DataTable
+          columns={[
+            { key: "year", label: "Año" },
+            { key: "rate", label: "Inflación (%)" },
+            { key: "status", label: "Estatus", render: (_value, row) => (row.isActive ? "Activo" : "Inactivo") },
+            { key: "updatedAt", label: "Última actualización", render: (value) => formatDate(value) },
+            ...(canManageInflation
+              ? [
+                  {
+                    key: "actions",
+                    label: "Acciones",
+                    render: (_value, row) => (
                       <CrudActions
                         onEdit={() => {
                           const selected = inflationItems.find((item) => item.id === row.adjustmentId);
@@ -305,19 +299,14 @@ function AdjustmentsPage() {
                         }}
                         onDelete={() => handleDelete(row)}
                       />
-                    </td>
-                  ) : null}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td className="empty-state" colSpan={canManageInflation ? 5 : 4}>
-                  Aún no hay inflaciones guardadas.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+          rows={inflationHistoryRows}
+          emptyLabel="Aún no hay inflaciones guardadas."
+        />
       </div>
     </section>
   );
