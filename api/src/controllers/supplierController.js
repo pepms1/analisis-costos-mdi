@@ -1,4 +1,5 @@
 import { Supplier } from "../models/Supplier.js";
+import { AppError } from "../utils/AppError.js";
 
 export async function listSuppliers(_req, res) {
   const items = await Supplier.find().sort({ createdAt: -1 });
@@ -26,4 +27,38 @@ export async function createSupplier(req, res) {
   });
 
   res.status(201).json({ item });
+}
+
+export async function updateSupplier(req, res) {
+  const item = await Supplier.findByIdAndUpdate(
+    req.params.id,
+    {
+      ...req.validatedBody,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Supplier not found", 404);
+  }
+
+  res.json({ item });
+}
+
+export async function deactivateSupplier(req, res) {
+  const item = await Supplier.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Supplier not found", 404);
+  }
+
+  res.json({ item });
 }

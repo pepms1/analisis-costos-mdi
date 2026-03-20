@@ -1,4 +1,5 @@
 import { Category } from "../models/Category.js";
+import { AppError } from "../utils/AppError.js";
 
 export async function listCategories(_req, res) {
   const items = await Category.find().sort({ createdAt: -1 });
@@ -23,4 +24,38 @@ export async function createCategory(req, res) {
   });
 
   res.status(201).json({ item });
+}
+
+export async function updateCategory(req, res) {
+  const item = await Category.findByIdAndUpdate(
+    req.params.id,
+    {
+      ...req.validatedBody,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Category not found", 404);
+  }
+
+  res.json({ item });
+}
+
+export async function deactivateCategory(req, res) {
+  const item = await Category.findByIdAndUpdate(
+    req.params.id,
+    {
+      isActive: false,
+      updatedBy: req.user.id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Category not found", 404);
+  }
+
+  res.json({ item });
 }

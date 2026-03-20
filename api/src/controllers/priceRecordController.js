@@ -40,20 +40,50 @@ export async function listPriceRecords(req, res) {
       supplierId:
         typeof item.supplierId === "object" ? item.supplierId?._id?.toString() : item.supplierId?.toString(),
       projectId: typeof item.projectId === "object" ? item.projectId?._id?.toString() : item.projectId?.toString(),
+      categoryId: item.categoryId?.toString(),
       conceptName: item.conceptId?.name || "—",
       supplierName: item.supplierId?.name || "—",
       projectName: item.projectId?.name || item.projectNameSnapshot || item.projectName || "—",
       mainType: item.mainType,
+      unit: item.unit,
+      pricingMode: item.pricingMode,
       amount: item.originalAmount,
       normalizedPrice: item.normalizedPrice,
       normalizedUnit: item.normalizedUnit,
       location: item.location,
       observations: item.observations,
+      dimensions: item.dimensions,
     })),
   });
 }
 
-export async function createPriceRecord(req, res) {
+async function resolveDependencies({ categoryId, conceptId, supplierId, projectId }) {
+  const [category, concept, supplier, project] = await Promise.all([
+    Category.findById(categoryId),
+    Concept.findById(conceptId),
+    supplierId ? Supplier.findById(supplierId) : Promise.resolve(null),
+    projectId ? Project.findById(projectId) : Promise.resolve(null),
+  ]);
+
+  if (!category) throw new AppError("Category not found", 404);
+  if (!concept) throw new AppError("Concept not found", 404);
+  if (supplierId && !supplier) throw new AppError("Supplier not found", 404);
+  if (projectId && !project) throw new AppError("Project not found", 404);
+
+  return { category, concept, project };
+}
+
+function validatePricingConsistency({ category, concept, project, mainType }) {
+  if (project && !project.isActive) {
+    throw new AppError("Inactive projects cannot be used in price records", 400);
+  }
+
+  if (category.mainType !== mainType || concept.mainType !== mainType) {
+    throw new AppError("mainType must match category and concept", 400);
+  }
+}
+
+function buildRecordPayload(validatedBody, reqUserId, concept, project) {
   const {
     categoryId,
     conceptId,
@@ -65,38 +95,7 @@ export async function createPriceRecord(req, res) {
     amount,
     attributes,
     ...rest
-  } = req.validatedBody;
-
-  const [category, concept, supplier, project] = await Promise.all([
-    Category.findById(categoryId),
-    Concept.findById(conceptId),
-    supplierId ? Supplier.findById(supplierId) : Promise.resolve(null),
-    projectId ? Project.findById(projectId) : Promise.resolve(null),
-  ]);
-
-  if (!category) {
-    throw new AppError("Category not found", 404);
-  }
-
-  if (!concept) {
-    throw new AppError("Concept not found", 404);
-  }
-
-  if (supplierId && !supplier) {
-    throw new AppError("Supplier not found", 404);
-  }
-
-  if (projectId && !project) {
-    throw new AppError("Project not found", 404);
-  }
-
-  if (project && !project.isActive) {
-    throw new AppError("Inactive projects cannot be used in new price records", 400);
-  }
-
-  if (category.mainType !== mainType || concept.mainType !== mainType) {
-    throw new AppError("mainType must match category and concept", 400);
-  }
+  } = validatedBody;
 
   const pricingPayload = buildPricingPayload({
     calculationType: concept.calculationType,
@@ -105,7 +104,7 @@ export async function createPriceRecord(req, res) {
     amount,
   });
 
-  const item = await PriceRecord.create({
+  return {
     ...rest,
     mainType,
     categoryId,
@@ -117,9 +116,45 @@ export async function createPriceRecord(req, res) {
     pricingMode,
     attributes: attributes || {},
     ...pricingPayload,
+    updatedBy: reqUserId,
+  };
+}
+
+export async function createPriceRecord(req, res) {
+  const { category, concept, project } = await resolveDependencies(req.validatedBody);
+  validatePricingConsistency({ category, concept, project, mainType: req.validatedBody.mainType });
+
+  const item = await PriceRecord.create({
+    ...buildRecordPayload(req.validatedBody, req.user.id, concept, project),
     createdBy: req.user.id,
-    updatedBy: req.user.id,
   });
 
   res.status(201).json({ item });
+}
+
+export async function updatePriceRecord(req, res) {
+  const { category, concept, project } = await resolveDependencies(req.validatedBody);
+  validatePricingConsistency({ category, concept, project, mainType: req.validatedBody.mainType });
+
+  const item = await PriceRecord.findByIdAndUpdate(
+    req.params.id,
+    buildRecordPayload(req.validatedBody, req.user.id, concept, project),
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new AppError("Price record not found", 404);
+  }
+
+  res.json({ item });
+}
+
+export async function deletePriceRecord(req, res) {
+  const item = await PriceRecord.findByIdAndDelete(req.params.id);
+
+  if (!item) {
+    throw new AppError("Price record not found", 404);
+  }
+
+  res.status(204).send();
 }
