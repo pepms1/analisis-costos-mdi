@@ -16,6 +16,8 @@ const initialForm = {
   measurementUnit: "cm",
 };
 
+const LABOR_PRICING_MODE = "total_price";
+
 function QuickCapturePage() {
   const [concepts, setConcepts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -38,10 +40,18 @@ function QuickCapturePage() {
   }, []);
 
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === form.conceptId), [concepts, form.conceptId]);
+  const isLaborConcept = selectedConcept?.mainType === "labor";
+  const effectivePricingMode = isLaborConcept ? LABOR_PRICING_MODE : form.pricingMode;
   const requiresDimensions = Boolean(
     selectedConcept &&
       (selectedConcept.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(selectedConcept.calculationType))
   );
+
+  useEffect(() => {
+    if (isLaborConcept && form.pricingMode !== LABOR_PRICING_MODE) {
+      setForm((prev) => ({ ...prev, pricingMode: LABOR_PRICING_MODE }));
+    }
+  }, [isLaborConcept, form.pricingMode]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -68,7 +78,7 @@ function QuickCapturePage() {
           projectId: form.projectId || null,
           unit: selectedConcept.primaryUnit || "pieza",
           priceDate: form.priceDate,
-          pricingMode: form.pricingMode,
+          pricingMode: effectivePricingMode,
           amount: Number(form.amount),
           location: form.location,
           observations: form.observations,
@@ -115,7 +125,7 @@ function QuickCapturePage() {
 
         <div className="subgrid">
           <label className="field">
-            <span>Precio</span>
+            <span>{isLaborConcept ? "Sueldo / pago total" : "Precio"}</span>
             <input
               type="number"
               step="0.01"
@@ -135,16 +145,23 @@ function QuickCapturePage() {
             />
           </label>
 
-          <label className="field">
-            <span>Modo</span>
-            <select
-              value={form.pricingMode}
-              onChange={(event) => setForm((prev) => ({ ...prev, pricingMode: event.target.value }))}
-            >
-              <option value="unit_price">Precio unitario</option>
-              <option value="total_price">Precio total</option>
-            </select>
-          </label>
+          {isLaborConcept ? (
+            <label className="field">
+              <span>Tipo de captura</span>
+              <input value="Pago total por periodo (mano de obra)" readOnly />
+            </label>
+          ) : (
+            <label className="field">
+              <span>Modo</span>
+              <select
+                value={form.pricingMode}
+                onChange={(event) => setForm((prev) => ({ ...prev, pricingMode: event.target.value }))}
+              >
+                <option value="unit_price">Precio unitario</option>
+                <option value="total_price">Precio total</option>
+              </select>
+            </label>
+          )}
         </div>
 
         <div className="subgrid">

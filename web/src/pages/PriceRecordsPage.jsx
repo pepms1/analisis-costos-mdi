@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from "../utils/formatters";
 
 const getDefaultYear = () => new Date().getFullYear().toString();
 const getYearMidDate = (year) => `${year}-07-01`;
+const LABOR_PRICING_MODE = "total_price";
 
 const initialForm = {
   mainType: "material",
@@ -89,6 +90,8 @@ function PriceRecordsPage() {
   const filteredConcepts = concepts.filter((concept) => (form.categoryId ? concept.categoryId === form.categoryId : true));
 
   const selectedConcept = concepts.find((concept) => concept.id === form.conceptId);
+  const isLaborMainType = form.mainType === "labor";
+  const effectivePricingMode = isLaborMainType ? LABOR_PRICING_MODE : form.pricingMode;
   const requiresDimensions = Boolean(
     selectedConcept &&
       (selectedConcept.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(selectedConcept.calculationType))
@@ -97,6 +100,12 @@ function PriceRecordsPage() {
   const visibleProjects = projects.filter(
     (project) => project.isActive && project.name.toLowerCase().includes(projectSearch.trim().toLowerCase())
   );
+
+  useEffect(() => {
+    if (isLaborMainType && form.pricingMode !== LABOR_PRICING_MODE) {
+      setForm((prev) => ({ ...prev, pricingMode: LABOR_PRICING_MODE }));
+    }
+  }, [isLaborMainType, form.pricingMode]);
 
   function resetCaptureContext() {
     const currentYear = getDefaultYear();
@@ -133,7 +142,7 @@ function PriceRecordsPage() {
       projectId: form.projectId || null,
       unit: form.unit,
       priceDate: form.priceDate,
-      pricingMode: form.pricingMode,
+      pricingMode: effectivePricingMode,
       amount: Number(form.amount),
       location: form.location,
       observations: form.observations,
@@ -297,15 +306,22 @@ function PriceRecordsPage() {
                 required
               />
             </label>
+            {isLaborMainType ? (
+              <label className="field">
+                <span>Tipo de captura</span>
+                <input value="Sueldo/pago total de mano de obra" readOnly />
+              </label>
+            ) : (
+              <label className="field">
+                <span>Modo de precio</span>
+                <select value={form.pricingMode} onChange={(e) => setForm({ ...form, pricingMode: e.target.value })}>
+                  <option value="unit_price">Precio unitario</option>
+                  <option value="total_price">Precio total</option>
+                </select>
+              </label>
+            )}
             <label className="field">
-              <span>Modo de precio</span>
-              <select value={form.pricingMode} onChange={(e) => setForm({ ...form, pricingMode: e.target.value })}>
-                <option value="unit_price">Precio unitario</option>
-                <option value="total_price">Precio total</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Monto</span>
+              <span>{isLaborMainType ? "Sueldo / pago total" : "Monto"}</span>
               <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
             </label>
             {requiresDimensions ? (
@@ -409,7 +425,7 @@ function PriceRecordsPage() {
                               projectId: row.projectId || "",
                               unit: row.unit || "pieza",
                               priceDate: row.priceDate ? new Date(row.priceDate).toISOString().slice(0, 10) : initialForm.priceDate,
-                              pricingMode: row.pricingMode || "unit_price",
+                              pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
                               amount: row.amount || "",
                               location: row.location || "",
                               observations: row.observations || "",
