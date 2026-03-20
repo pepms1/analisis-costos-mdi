@@ -87,6 +87,11 @@ function validatePricingConsistency({ category, concept, project, mainType }) {
   }
 }
 
+function resolvePricingMode(mainType, pricingMode) {
+  if (mainType === "labor") return "total_price";
+  return pricingMode || "unit_price";
+}
+
 function buildRecordPayload(validatedBody, reqUserId, concept, project) {
   const {
     categoryId,
@@ -104,7 +109,7 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
   const pricingPayload = buildPricingPayload({
     calculationType: concept.calculationType,
     dimensions,
-    pricingMode,
+    pricingMode: resolvePricingMode(mainType, pricingMode),
     amount,
     requiresDimensions: concept.requiresDimensions,
   });
@@ -118,7 +123,7 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     projectId: projectId || null,
     projectNameSnapshot: project?.name || "",
     dimensions,
-    pricingMode,
+    pricingMode: resolvePricingMode(mainType, pricingMode),
     attributes: attributes || {},
     ...pricingPayload,
     updatedBy: reqUserId,

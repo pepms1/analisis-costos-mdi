@@ -88,7 +88,7 @@ export const createPriceRecordSchema = z.object({
   projectId: z.string().nullable().optional(),
   unit: z.string().min(1),
   priceDate: z.string().min(1),
-  pricingMode: z.enum(["unit_price", "total_price"]),
+  pricingMode: z.enum(["unit_price", "total_price"]).optional(),
   amount: z.number().positive(),
   location: z.string().optional().default(""),
   observations: z.string().optional().default(""),
