@@ -79,6 +79,19 @@ function ConceptsPage() {
   const hasExactDuplicate = Boolean(form.categoryId && normalizedFormName && exactDuplicate);
   const hasPossibleDuplicate = Boolean(form.categoryId && form.name.trim() && similarConcepts.length);
 
+  function clearConceptFieldsAndKeepContext() {
+    setForm((prev) => ({
+      ...initialForm,
+      categoryId: prev.categoryId,
+    }));
+  }
+
+  function resetCaptureContext() {
+    setEditingId("");
+    setError("");
+    setForm(initialForm);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
@@ -106,8 +119,8 @@ function ConceptsPage() {
         body: JSON.stringify(payload),
       });
 
+      clearConceptFieldsAndKeepContext();
       setEditingId("");
-      setForm(initialForm);
       await loadPage();
     } catch (submitError) {
       setError(submitError.message);
@@ -131,7 +144,7 @@ function ConceptsPage() {
       });
       if (editingId === item.id) {
         setEditingId("");
-        setForm(initialForm);
+        clearConceptFieldsAndKeepContext();
       }
       await loadPage();
     } catch (deleteError) {
@@ -235,7 +248,10 @@ function ConceptsPage() {
             ) : null}
             <div className="button-row">
               <button type="submit" className="primary-button" disabled={hasExactDuplicate}>
-                {editingId ? "Actualizar" : "Guardar"}
+                {editingId ? "Actualizar y mantener contexto" : "Guardar y nuevo"}
+              </button>
+              <button type="button" className="ghost-button" onClick={resetCaptureContext}>
+                Reset contexto
               </button>
               {editingId ? (
                 <button
@@ -244,7 +260,7 @@ function ConceptsPage() {
                   onClick={() => {
                     setEditingId("");
                     setError("");
-                    setForm(initialForm);
+                    clearConceptFieldsAndKeepContext();
                   }}
                 >
                   Cancelar
