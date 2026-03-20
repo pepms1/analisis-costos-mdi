@@ -7,6 +7,36 @@ import { AppError } from "../utils/AppError.js";
 import { centsToAmount, parseMoneyInput } from "../utils/money.js";
 import { buildPricingPayload } from "../utils/normalization.js";
 
+function parsePositiveInt(value) {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+async function resolveSearchFilters(search) {
+  const normalizedSearch = search?.trim();
+  if (!normalizedSearch) return null;
+
+  const regex = new RegExp(normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  const [matchingConcepts, matchingSuppliers, matchingCategories] = await Promise.all([
+    Concept.find({ name: regex }).select("_id").lean(),
+    Supplier.find({ name: regex }).select("_id").lean(),
+    Category.find({ name: regex }).select("_id").lean(),
+  ]);
+
+  return {
+    $or: [
+      { observations: regex },
+      { location: regex },
+      { capturedAmount: regex },
+      ...(matchingConcepts.length ? [{ conceptId: { $in: matchingConcepts.map((item) => item._id) } }] : []),
+      ...(matchingSuppliers.length ? [{ supplierId: { $in: matchingSuppliers.map((item) => item._id) } }] : []),
+      ...(matchingCategories.length ? [{ categoryId: { $in: matchingCategories.map((item) => item._id) } }] : []),
+    ],
+  };
+}
+
 export async function listPriceRecords(req, res) {
   const query = {};
   const shouldPopulate = req.query.populate !== "0";
@@ -22,16 +52,37 @@ export async function listPriceRecords(req, res) {
     if (req.query.dateTo) query.priceDate.$lte = new Date(req.query.dateTo);
   }
 
-  let recordsQuery = PriceRecord.find(query).sort({ priceDate: -1, createdAt: -1 });
+  const searchFilter = await resolveSearchFilters(req.query.search);
+  if (searchFilter) {
+    query.$and = [...(query.$and || []), searchFilter];
+  }
+
+  const sortDirection = req.query.sort === "asc" ? 1 : -1;
+  const page = parsePositiveInt(req.query.page);
+  const requestedLimit = parsePositiveInt(req.query.limit);
+  const hasPagination = Boolean(page || requestedLimit);
+  const limit = Math.min(requestedLimit || 25, 200);
+  const effectivePage = page || 1;
+
+  let recordsQuery = PriceRecord.find(query).sort({ priceDate: sortDirection, createdAt: sortDirection });
+
+  if (hasPagination) {
+    recordsQuery = recordsQuery.skip((effectivePage - 1) * limit).limit(limit);
+  }
 
   if (shouldPopulate) {
     recordsQuery = recordsQuery
+      .populate("categoryId", "name")
       .populate("conceptId", "name")
       .populate("supplierId", "name")
-      .populate("projectId", "name code");
+      .populate("projectId", "name code")
+      .populate("createdBy", "name email");
   }
 
-  const items = await recordsQuery;
+  const [items, totalItems] = await Promise.all([
+    recordsQuery,
+    hasPagination ? PriceRecord.countDocuments(query) : Promise.resolve(null),
+  ]);
 
   res.json({
     items: items.map((item) => ({
@@ -41,8 +92,9 @@ export async function listPriceRecords(req, res) {
       supplierId:
         typeof item.supplierId === "object" ? item.supplierId?._id?.toString() : item.supplierId?.toString(),
       projectId: typeof item.projectId === "object" ? item.projectId?._id?.toString() : item.projectId?.toString(),
-      categoryId: item.categoryId?.toString(),
+      categoryId: typeof item.categoryId === "object" ? item.categoryId?._id?.toString() : item.categoryId?.toString(),
       conceptName: item.conceptId?.name || "—",
+      categoryName: item.categoryId?.name || "—",
       supplierName: item.supplierId?.name || "—",
       projectName: item.projectId?.name || item.projectNameSnapshot || item.projectName || "—",
       mainType: item.mainType,
@@ -59,7 +111,20 @@ export async function listPriceRecords(req, res) {
       location: item.location,
       observations: item.observations,
       dimensions: item.dimensions,
+      createdByName: item.createdBy?.name || "—",
+      createdByEmail: item.createdBy?.email || "",
+      createdAt: item.createdAt,
     })),
+    ...(hasPagination
+      ? {
+          pagination: {
+            page: effectivePage,
+            limit,
+            totalItems,
+            totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+          },
+        }
+      : {}),
   });
 }
 
