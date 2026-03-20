@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
     "build": "node -e \"console.log('API build step not required')\"",
     "lint": "echo \"No lint configured yet\"",
     "seed:admin": "node scripts/seedAdmin.js"
