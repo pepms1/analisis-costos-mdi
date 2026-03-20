@@ -149,7 +149,7 @@ function ConsultaPage() {
   return (
     <section className="page-shell">
       <PageHeader
-        title="Consulta"
+        title="Análisis"
         description="Busca un concepto, revisa su histórico y compáralo contra inflación en una sola vista."
       />
 
