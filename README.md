@@ -58,3 +58,25 @@ npm run seed:admin
 ```
 
 Por defecto usa las variables de `api/.env` y crea el usuario indicado ahi.
+
+## Deploy de API en Render
+
+Para desplegar solo el backend (`/api`) como **Web Service** en Render:
+
+- **Root Directory**: `api`
+- **Build Command**: `npm install`
+- **Start Command**: `npm start`
+
+El script `start` del backend ejecuta `node src/server.js` (sin `--watch`), que es el modo correcto para produccion.
+
+### Variables de entorno criticas en Render (API)
+
+- `MONGODB_URI` (obligatoria)
+- `JWT_SECRET` (obligatoria)
+
+Opcionales recomendadas:
+
+- `NODE_ENV=production`
+- `PORT` (Render la inyecta automaticamente)
+- `JWT_EXPIRES_IN`
+- `CLIENT_ORIGIN`
