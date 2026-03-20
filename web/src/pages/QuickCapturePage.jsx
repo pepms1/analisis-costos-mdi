@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
+import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
 const initialForm = {
   conceptId: "",
@@ -71,6 +72,10 @@ function QuickCapturePage() {
       setStatus({ error: "Para conceptos dimensionales captura largo y ancho.", success: "" });
       return;
     }
+    if (!isValidMoneyInput(form.amount)) {
+      setStatus({ error: "Precio inválido. Usa un número positivo con máximo 2 decimales.", success: "" });
+      return;
+    }
 
     try {
       await apiRequest("/price-records", {
@@ -85,7 +90,7 @@ function QuickCapturePage() {
           unit: selectedConcept.primaryUnit || "pieza",
           priceDate: form.priceDate,
           pricingMode: effectivePricingMode,
-          amount: Number(form.amount),
+          amount: normalizeMoneyDraft(form.amount),
           location: form.location,
           observations: form.observations,
           dimensions: requiresDimensions
@@ -141,10 +146,11 @@ function QuickCapturePage() {
           <label className="field">
             <span>{isLaborConcept ? "Sueldo / pago total" : "Precio"}</span>
             <input
-              type="number"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.amount}
               onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+              onBlur={(event) => setForm((prev) => ({ ...prev, amount: normalizeMoneyDraft(event.target.value) }))}
               required
             />
           </label>
