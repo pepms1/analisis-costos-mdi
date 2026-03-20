@@ -971,3 +971,23 @@ th {
   background: rgba(62, 89, 158, 0.15);
   color: #3e599e;
 }
+
+.confidence-chip-high {
+  background: rgba(33, 110, 57, 0.15);
+  color: #216e39;
+}
+
+.confidence-chip-medium {
+  background: rgba(176, 122, 8, 0.15);
+  color: #8a6408;
+}
+
+.confidence-chip-low {
+  background: rgba(178, 58, 72, 0.14);
+  color: #b23a48;
+}
+
+.cell-wrap {
+  white-space: normal;
+  min-width: 220px;
+}

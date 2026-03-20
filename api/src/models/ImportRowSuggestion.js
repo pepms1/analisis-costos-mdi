@@ -16,5 +16,6 @@ const importRowSuggestionSchema = new mongoose.Schema(
 );
 
 importRowSuggestionSchema.index({ importRowId: 1, score: -1 });
+importRowSuggestionSchema.index({ importRowId: 1 }, { unique: true });
 
 export const ImportRowSuggestion = mongoose.model("ImportRowSuggestion", importRowSuggestionSchema);

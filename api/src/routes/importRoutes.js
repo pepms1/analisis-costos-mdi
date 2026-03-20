@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   applyImportSession,
   createImportSession,
+  generateImportSessionSuggestions,
   getImportSession,
   getImportSessionPreview,
   listImportRows,
@@ -41,6 +42,7 @@ router.post(
   asyncHandler(saveImportSessionMapping)
 );
 router.post("/import-sessions/:id/parse", requirePermission(PERMISSIONS.PRICES_EDIT), asyncHandler(parseImportSessionRows));
+router.post("/import-sessions/:id/suggestions", requirePermission(PERMISSIONS.PRICES_EDIT), asyncHandler(generateImportSessionSuggestions));
 router.get("/import-sessions/:id/rows", requirePermission(PERMISSIONS.PRICES_VIEW), asyncHandler(listImportRows));
 router.patch(
   "/import-rows/:id/decision",
