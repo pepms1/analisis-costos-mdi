@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import CrudActions from "../components/CrudActions";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 
 const defaultForm = { year: "", rate: "" };
 
@@ -59,8 +60,8 @@ function adjustmentToForm(item) {
 }
 
 function AdjustmentsPage() {
-  const { user } = useAuth();
-  const canDeleteInflation = user?.role === "superadmin";
+  const { hasPermission } = useAuth();
+  const canManageInflation = hasPermission(PERMISSIONS.INFLATION_MANAGE);
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(defaultForm);
   const [name, setName] = useState("Inflación anual");
@@ -114,6 +115,7 @@ function AdjustmentsPage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!canManageInflation) return;
     setStatus({ error: "", success: "" });
 
     const currentRows = inflationItem ? factorsToRows(inflationItem.factors || []) : [];
@@ -154,6 +156,7 @@ function AdjustmentsPage() {
   }
 
   async function handleDelete(row) {
+    if (!canManageInflation) return;
     const isSingleYearSetting = inflationHistoryRows.length === 1;
     const confirmationMessage = isSingleYearSetting
       ? `¿Seguro que deseas eliminar la inflación ${row.year} con valor ${row.rate}%? Esta acción es permanente.`
@@ -200,55 +203,59 @@ function AdjustmentsPage() {
         description="Configura la inflación anual de forma simple. Esta tabla es la fuente usada para estimar precios actuales."
       />
 
-      <form className="card form-grid" onSubmit={handleSubmit}>
-        <div className="inflation-grid">
-          <label className="field">
-            <span>Año</span>
-            <input
-              value={form.year}
-              onChange={(event) => setForm((prev) => ({ ...prev, year: event.target.value }))}
-              placeholder="2026"
-              required
-            />
-          </label>
-          <label className="field">
-            <span>Inflación anual (%)</span>
-            <input
-              value={form.rate}
-              onChange={(event) => setForm((prev) => ({ ...prev, rate: event.target.value }))}
-              placeholder="5.00"
-              type="number"
-              step="0.01"
-              required
-            />
-          </label>
-        </div>
+      {!canManageInflation ? <div className="alert">Modo solo lectura: solo superadmin puede modificar inflación.</div> : null}
 
-        <div className="alert">
-          <strong>Valor en uso:</strong> {inflationItem?.name || "Sin configuración activa"}
-          <p className="muted">Modo manual listo para evolucionar a fuente oficial en una siguiente fase.</p>
-        </div>
+      {canManageInflation ? (
+        <form className="card form-grid" onSubmit={handleSubmit}>
+          <div className="inflation-grid">
+            <label className="field">
+              <span>Año</span>
+              <input
+                value={form.year}
+                onChange={(event) => setForm((prev) => ({ ...prev, year: event.target.value }))}
+                placeholder="2026"
+                required
+              />
+            </label>
+            <label className="field">
+              <span>Inflación anual (%)</span>
+              <input
+                value={form.rate}
+                onChange={(event) => setForm((prev) => ({ ...prev, rate: event.target.value }))}
+                placeholder="5.00"
+                type="number"
+                step="0.01"
+                required
+              />
+            </label>
+          </div>
 
-        {status.error ? <div className="alert error">{status.error}</div> : null}
-        {status.success ? <div className="alert">{status.success}</div> : null}
+          <div className="alert">
+            <strong>Valor en uso:</strong> {inflationItem?.name || "Sin configuración activa"}
+            <p className="muted">Modo manual listo para evolucionar a fuente oficial en una siguiente fase.</p>
+          </div>
 
-        <div className="button-row">
-          <button type="submit" className="primary-button">
-            {editingYear ? "Actualizar inflación" : "Guardar inflación"}
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => {
-              setForm(defaultForm);
-              setEditingYear("");
-              setStatus({ error: "", success: "" });
-            }}
-          >
-            Limpiar formulario
-          </button>
-        </div>
-      </form>
+          {status.error ? <div className="alert error">{status.error}</div> : null}
+          {status.success ? <div className="alert">{status.success}</div> : null}
+
+          <div className="button-row">
+            <button type="submit" className="primary-button">
+              {editingYear ? "Actualizar inflación" : "Guardar inflación"}
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                setForm(defaultForm);
+                setEditingYear("");
+                setStatus({ error: "", success: "" });
+              }}
+            >
+              Limpiar formulario
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       <div className="card form-grid">
         <label className="field">
@@ -272,7 +279,7 @@ function AdjustmentsPage() {
               <th>Inflación (%)</th>
               <th>Estatus</th>
               <th>Última actualización</th>
-              {canDeleteInflation ? <th>Acciones</th> : null}
+              {canManageInflation ? <th>Acciones</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -283,7 +290,7 @@ function AdjustmentsPage() {
                   <td>{row.rate}</td>
                   <td>{row.isActive ? "Activo" : "Inactivo"}</td>
                   <td>{formatDate(row.updatedAt)}</td>
-                  {canDeleteInflation ? (
+                  {canManageInflation ? (
                     <td>
                       <CrudActions
                         onEdit={() => {
@@ -304,7 +311,7 @@ function AdjustmentsPage() {
               ))
             ) : (
               <tr>
-                <td className="empty-state" colSpan={canDeleteInflation ? 5 : 4}>
+                <td className="empty-state" colSpan={canManageInflation ? 5 : 4}>
                   Aún no hay inflaciones guardadas.
                 </td>
               </tr>

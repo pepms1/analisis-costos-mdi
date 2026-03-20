@@ -4,6 +4,7 @@ import CrudActions from "../components/CrudActions";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { formatCurrency, formatDate } from "../utils/formatters";
 
@@ -29,8 +30,8 @@ const initialForm = {
 };
 
 function PriceRecordsPage() {
-  const { user } = useAuth();
-  const canManage = ["superadmin", "admin"].includes(user?.role);
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission(PERMISSIONS.PRICES_EDIT);
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);

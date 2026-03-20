@@ -4,6 +4,7 @@ import CrudActions from "../components/CrudActions";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 import { ROLE_OPTIONS } from "../utils/constants";
 import { formatDate } from "../utils/formatters";
 
@@ -15,8 +16,8 @@ const initialForm = {
 };
 
 function UsersPage() {
-  const { user } = useAuth();
-  const canManage = user?.role === "superadmin";
+  const { hasPermission, user } = useAuth();
+  const canManage = hasPermission(PERMISSIONS.USERS_MANAGE);
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");

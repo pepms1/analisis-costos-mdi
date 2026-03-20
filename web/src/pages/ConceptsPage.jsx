@@ -4,6 +4,7 @@ import CrudActions from "../components/CrudActions";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 import { CALCULATION_TYPE_OPTIONS, MAIN_TYPE_OPTIONS } from "../utils/constants";
 
 const initialForm = {
@@ -38,8 +39,8 @@ function isApproximateMatch(conceptName, searchValue) {
 }
 
 function ConceptsPage() {
-  const { user } = useAuth();
-  const canManage = ["superadmin", "admin"].includes(user?.role);
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission(PERMISSIONS.CATALOGS_MANAGE);
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(initialForm);

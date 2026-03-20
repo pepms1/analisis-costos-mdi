@@ -6,17 +6,18 @@ import {
   reactivateCategory,
   updateCategory,
 } from "../controllers/categoryController.js";
-import { requireRoles } from "../middlewares/authMiddleware.js";
+import { requirePermission } from "../middlewares/authMiddleware.js";
 import { validate } from "../middlewares/validate.js";
 import { createCategorySchema, updateCategorySchema } from "../schemas/authSchemas.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { PERMISSIONS } from "../utils/permissions.js";
 
 const router = Router();
 
-router.get("/", asyncHandler(listCategories));
-router.post("/", requireRoles("superadmin", "admin"), validate(createCategorySchema), asyncHandler(createCategory));
-router.put("/:id", requireRoles("superadmin", "admin"), validate(updateCategorySchema), asyncHandler(updateCategory));
-router.delete("/:id", requireRoles("superadmin", "admin"), asyncHandler(deactivateCategory));
-router.patch("/:id/reactivate", requireRoles("superadmin", "admin"), asyncHandler(reactivateCategory));
+router.get("/", requirePermission(PERMISSIONS.CATALOGS_VIEW), asyncHandler(listCategories));
+router.post("/", requirePermission(PERMISSIONS.CATALOGS_MANAGE), validate(createCategorySchema), asyncHandler(createCategory));
+router.put("/:id", requirePermission(PERMISSIONS.CATALOGS_MANAGE), validate(updateCategorySchema), asyncHandler(updateCategory));
+router.delete("/:id", requirePermission(PERMISSIONS.CATALOGS_MANAGE), asyncHandler(deactivateCategory));
+router.patch("/:id/reactivate", requirePermission(PERMISSIONS.CATALOGS_MANAGE), asyncHandler(reactivateCategory));
 
 export default router;

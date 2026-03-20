@@ -1,23 +1,24 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 
 const primaryLinks = [
-  { to: "/consulta", label: "Consulta" },
-  { to: "/captura-rapida", label: "Captura rápida" },
-  { to: "/historicos", label: "Históricos" },
-  { to: "/inflacion", label: "Inflación" },
+  { to: "/consulta", label: "Consulta", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/captura-rapida", label: "Captura rápida", permission: PERMISSIONS.PRICES_QUICK_CAPTURE },
+  { to: "/historicos", label: "Históricos", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/inflacion", label: "Inflación", permission: PERMISSIONS.INFLATION_VIEW },
 ];
 
 const catalogLinks = [
-  { to: "/categories", label: "Categorías" },
-  { to: "/concepts", label: "Conceptos" },
-  { to: "/suppliers", label: "Proveedores" },
-  { to: "/projects", label: "Obras" },
+  { to: "/categories", label: "Categorías", permission: PERMISSIONS.CATALOGS_VIEW },
+  { to: "/concepts", label: "Conceptos", permission: PERMISSIONS.CATALOGS_VIEW },
+  { to: "/suppliers", label: "Proveedores", permission: PERMISSIONS.CATALOGS_VIEW },
+  { to: "/projects", label: "Obras", permission: PERMISSIONS.BUDGETS_VIEW },
 ];
 
 const adminLinks = [
-  { to: "/users", label: "Usuarios" },
-  { to: "/dashboard", label: "Resumen admin" },
+  { to: "/users", label: "Usuarios", permission: PERMISSIONS.USERS_VIEW },
+  { to: "/dashboard", label: "Resumen admin", permission: PERMISSIONS.AUDIT_VIEW },
 ];
 
 function LinkGroup({ title, links }) {
@@ -40,7 +41,7 @@ function LinkGroup({ title, links }) {
 }
 
 function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
 
   return (
     <div className="app-shell">
@@ -52,9 +53,9 @@ function AppLayout() {
         </div>
 
         <nav className="nav-groups">
-          <LinkGroup title="Principal" links={primaryLinks} />
-          <LinkGroup title="Catálogos" links={catalogLinks} />
-          <LinkGroup title="Administración" links={adminLinks} />
+          <LinkGroup title="Principal" links={primaryLinks.filter((link) => hasPermission(link.permission))} />
+          <LinkGroup title="Catálogos" links={catalogLinks.filter((link) => hasPermission(link.permission))} />
+          <LinkGroup title="Administración" links={adminLinks.filter((link) => hasPermission(link.permission))} />
         </nav>
       </aside>
 

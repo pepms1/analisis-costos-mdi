@@ -1,5 +1,5 @@
 export const MAIN_TYPES = ["labor", "material"];
-export const USER_ROLES = ["superadmin", "admin", "viewer"];
+export const USER_ROLES = ["superadmin", "admin", "capturista", "viewer"];
 export const CALCULATION_TYPES = [
   "fixed_unit",
   "area_based",

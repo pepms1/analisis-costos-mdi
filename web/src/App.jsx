@@ -12,6 +12,7 @@ import PriceRecordsPage from "./pages/PriceRecordsPage";
 import AdjustmentsPage from "./pages/AdjustmentsPage";
 import ConsultaPage from "./pages/ConsultaPage";
 import QuickCapturePage from "./pages/QuickCapturePage";
+import { PERMISSIONS } from "./utils/permissions";
 
 function App() {
   return (
@@ -27,14 +28,42 @@ function App() {
       >
         <Route index element={<ConsultaPage />} />
         <Route path="consulta" element={<ConsultaPage />} />
-        <Route path="captura-rapida" element={<QuickCapturePage />} />
-        <Route path="historicos" element={<PriceRecordsPage />} />
-        <Route path="inflacion" element={<AdjustmentsPage />} />
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route
+          path="captura-rapida"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_QUICK_CAPTURE]}>
+              <QuickCapturePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="historicos"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_VIEW]}>
+              <PriceRecordsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="inflacion"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.INFLATION_VIEW]}>
+              <AdjustmentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="dashboard"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.AUDIT_VIEW]}>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="users"
           element={
-            <ProtectedRoute roles={["superadmin", "admin"]}>
+            <ProtectedRoute permissionsAll={[PERMISSIONS.USERS_VIEW]}>
               <UsersPage />
             </ProtectedRoute>
           }

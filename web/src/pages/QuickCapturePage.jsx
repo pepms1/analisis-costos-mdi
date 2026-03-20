@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import PageHeader from "../components/PageHeader";
+import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 
 const initialForm = {
   conceptId: "",
@@ -19,6 +21,9 @@ const initialForm = {
 const LABOR_PRICING_MODE = "total_price";
 
 function QuickCapturePage() {
+  const { hasPermission } = useAuth();
+  const canQuickCapture = hasPermission(PERMISSIONS.PRICES_QUICK_CAPTURE);
+  const canCreatePrice = hasPermission(PERMISSIONS.PRICES_CREATE);
   const [concepts, setConcepts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -69,6 +74,7 @@ function QuickCapturePage() {
 
     try {
       await apiRequest("/price-records", {
+        headers: { "x-capture-flow": "quick" },
         method: "POST",
         body: JSON.stringify({
           mainType: selectedConcept.mainType,
@@ -99,6 +105,14 @@ function QuickCapturePage() {
     } catch (submitError) {
       setStatus({ error: submitError.message, success: "" });
     }
+  }
+
+  if (!canQuickCapture || !canCreatePrice) {
+    return (
+      <section>
+        <PageHeader title="Captura rápida" description="No tienes permisos para registrar precios en este flujo." />
+      </section>
+    );
   }
 
   return (

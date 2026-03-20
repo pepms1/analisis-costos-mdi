@@ -4,6 +4,7 @@ import CrudActions from "../components/CrudActions";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 import { formatDate } from "../utils/formatters";
 
 const initialForm = {
@@ -16,7 +17,7 @@ const initialForm = {
 };
 
 function ProjectsPage() {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");
@@ -45,7 +46,7 @@ function ProjectsPage() {
       )
     );
   }, [items, search]);
-  const canManageProjects = ["superadmin", "admin"].includes(user?.role);
+  const canManageProjects = hasPermission(PERMISSIONS.BUDGETS_MANAGE);
 
   function handleEdit(item) {
     setEditingId(item.id);
