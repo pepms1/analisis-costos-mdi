@@ -66,6 +66,8 @@ function ExcelImportPage() {
   const [bulkSupplierId, setBulkSupplierId] = useState("");
   const [catalogs, setCatalogs] = useState({ categories: [], suppliers: [], projects: [] });
   const [editingRow, setEditingRow] = useState(null);
+  const [applying, setApplying] = useState(false);
+  const [applySummary, setApplySummary] = useState(null);
   const [editForm, setEditForm] = useState({
     finalCategoryId: "",
     finalSupplierId: "",
@@ -151,6 +153,7 @@ function ExcelImportPage() {
     setSuccess("");
     setParseSummary(null);
     setSuggestionSummary(null);
+    setApplySummary(null);
     setParseRows([]);
     setSelectedRows({});
 
@@ -330,6 +333,29 @@ function ExcelImportPage() {
     }
   }
 
+  async function handleApplyToHistoric() {
+    if (!session?.id) {
+      setError("No hay sesión activa para aplicar.");
+      return;
+    }
+
+    setApplying(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await apiRequest(`/import-sessions/${session.id}/apply`, { method: "POST" });
+      setApplySummary(response.summary || null);
+      setSession(response.item || session);
+      await loadParsedRows(session.id);
+      setSuccess("Aplicación a históricos finalizada.");
+    } catch (applyError) {
+      setError(applyError.message || "No se pudo aplicar la sesión a históricos");
+    } finally {
+      setApplying(false);
+    }
+  }
+
   function openEditModal(row) {
     setEditingRow(row);
     setEditForm({
@@ -373,7 +399,7 @@ function ExcelImportPage() {
     <section className="page-shell">
       <PageHeader
         title="Importación asistida desde Excel"
-        description="Stage 5: revisión operativa por fila (aceptar, editar, ignorar), acciones masivas y persistencia en import_row_decisions."
+        description="Stage 6: aplicación final desde decisiones staging a históricos reales con trazabilidad e idempotencia."
       />
 
       <article className="card import-assistant-card">
@@ -465,6 +491,14 @@ function ExcelImportPage() {
           >
             {suggesting ? "Generando..." : "Generar sugerencias"}
           </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleApplyToHistoric}
+            disabled={applying || suggesting || parsing || saving || loading || !session?.id}
+          >
+            {applying ? "Aplicando..." : "Aplicar a históricos"}
+          </button>
           <p className="muted">Estado sesión: {session?.status || "sin sesión"}</p>
         </div>
 
@@ -491,6 +525,43 @@ function ExcelImportPage() {
               <p>Sin match: <strong>{suggestionSummary.noMatch}</strong></p>
               <p>Candidatas: <strong>{suggestionSummary.candidateRows}</strong></p>
             </div>
+          </section>
+        ) : null}
+
+        {applySummary ? (
+          <section className="import-panel card-subtle">
+            <h3>Resumen de aplicación final</h3>
+            <div className="parse-summary-grid">
+              <p>Decisiones revisadas: <strong>{applySummary.totalReviewed}</strong></p>
+              <p>Elegibles (accepted/edited): <strong>{applySummary.eligible}</strong></p>
+              <p>Aplicadas: <strong>{applySummary.applied}</strong></p>
+              <p>Omitidas: <strong>{applySummary.omitted}</strong></p>
+              <p>Con error: <strong>{applySummary.errors}</strong></p>
+              <p>Advertencia duplicado: <strong>{applySummary.duplicateWarnings}</strong></p>
+              <p>Ya aplicadas (idempotencia): <strong>{applySummary.alreadyApplied}</strong></p>
+            </div>
+            {applySummary.errorRows?.length ? (
+              <div>
+                <p><strong>Filas con error:</strong></p>
+                <ul>
+                  {applySummary.errorRows.slice(0, 10).map((item) => (
+                    <li key={`${item.importRowId}-${item.sheetRowNumber}`}>Fila #{item.sheetRowNumber}: {item.reason}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {applySummary.warnings?.length ? (
+              <div>
+                <p><strong>Advertencias de posible duplicado:</strong></p>
+                <ul>
+                  {applySummary.warnings.slice(0, 10).map((item) => (
+                    <li key={`${item.importRowId}-${item.duplicateHistoricId}`}>
+                      Fila #{item.sheetRowNumber}: posible duplicado con histórico {item.duplicateHistoricId}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
