@@ -106,6 +106,7 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     dimensions,
     pricingMode,
     amount,
+    requiresDimensions: concept.requiresDimensions,
   });
 
   return {

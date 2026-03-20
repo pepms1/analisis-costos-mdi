@@ -94,6 +94,8 @@ export const createPriceRecordSchema = z.object({
   observations: z.string().optional().default(""),
   dimensions: z
     .object({
+      largo: z.number().positive().optional(),
+      ancho: z.number().positive().optional(),
       width: z.number().positive().optional(),
       height: z.number().positive().optional(),
       length: z.number().positive().optional(),
@@ -127,4 +129,14 @@ export const createQuoteCheckSchema = z.object({
   supplierId: z.string().nullable().optional(),
   quotedPrice: z.number().positive(),
   targetDate: z.string().min(1),
+  dimensions: z
+    .object({
+      largo: z.number().positive().optional(),
+      ancho: z.number().positive().optional(),
+      width: z.number().positive().optional(),
+      height: z.number().positive().optional(),
+      length: z.number().positive().optional(),
+      measurementUnit: z.enum(["cm", "m"]).optional(),
+    })
+    .optional(),
 });

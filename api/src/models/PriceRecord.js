@@ -19,6 +19,8 @@ const priceRecordSchema = new mongoose.Schema(
     location: { type: String, default: "" },
     observations: { type: String, default: "" },
     dimensions: {
+      largo: Number,
+      ancho: Number,
       width: Number,
       height: Number,
       length: Number,

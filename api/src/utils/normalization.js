@@ -3,43 +3,41 @@ export function toMeters(value, measurementUnit = "m") {
   return measurementUnit === "cm" ? value / 100 : value;
 }
 
-export function normalizeDimensions(calculationType, dimensions = {}) {
-  if (!dimensions) return null;
+function resolveLengthWidth(dimensions = {}) {
+  if (!dimensions) return { largo: null, ancho: null };
 
-  const { measurementUnit = "m" } = dimensions;
-  const width = toMeters(dimensions.width, measurementUnit);
-  const height = toMeters(dimensions.height, measurementUnit);
-  const length = toMeters(dimensions.length, measurementUnit);
+  const measurementUnit = dimensions.measurementUnit || "m";
+  const largoRaw = dimensions.largo ?? dimensions.length ?? dimensions.width;
 
-  if (calculationType === "area_based" && width && height) {
-    return {
-      normalizedQuantity: width * height,
-      normalizedUnit: "m2",
-      derivedValues: { widthM: width, heightM: height },
-    };
+  let anchoRaw = dimensions.ancho ?? dimensions.height;
+  if (anchoRaw === undefined || anchoRaw === null) {
+    anchoRaw = largoRaw === dimensions.width ? dimensions.length ?? null : dimensions.width ?? null;
   }
 
-  if (calculationType === "linear_based" && length) {
-    return {
-      normalizedQuantity: length,
-      normalizedUnit: "ml",
-      derivedValues: { lengthM: length },
-    };
-  }
-
-  if (calculationType === "height_based" && length) {
-    return {
-      normalizedQuantity: length,
-      normalizedUnit: "m",
-      derivedValues: { heightM: length },
-    };
-  }
-
-  return null;
+  return {
+    largo: toMeters(largoRaw, measurementUnit),
+    ancho: toMeters(anchoRaw, measurementUnit),
+  };
 }
 
-export function buildPricingPayload({ calculationType, dimensions, pricingMode, amount }) {
-  const normalization = normalizeDimensions(calculationType, dimensions);
+export function normalizeDimensions(calculationType, dimensions = {}, requiresDimensions = false) {
+  if (!dimensions) return null;
+
+  const isDimensional = requiresDimensions || ["area_based", "linear_based", "height_based"].includes(calculationType);
+  if (!isDimensional) return null;
+
+  const { largo, ancho } = resolveLengthWidth(dimensions);
+  if (!largo || !ancho) return null;
+
+  return {
+    normalizedQuantity: largo * ancho,
+    normalizedUnit: "m2",
+    derivedValues: { largoM: largo, anchoM: ancho },
+  };
+}
+
+export function buildPricingPayload({ calculationType, dimensions, pricingMode, amount, requiresDimensions = false }) {
+  const normalization = normalizeDimensions(calculationType, dimensions, requiresDimensions);
 
   if (!normalization) {
     return {
