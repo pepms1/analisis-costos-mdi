@@ -156,6 +156,22 @@ export const createImportSessionSchema = z.object({
   optionsJson: z.record(z.string(), z.any()).optional().default({}),
 });
 
+
+export const uploadImportSessionFileSchema = z.object({
+  fileName: z.string().min(1),
+  fileType: z.string().optional().default("application/octet-stream"),
+  fileBase64: z.string().min(1),
+});
+
+export const saveImportSessionMappingSchema = z.object({
+  sheetName: z.string().min(1),
+  headerRowIndex: z.number().int().min(1),
+  dataStartRowIndex: z.number().int().min(1),
+  ignoreEmptyRows: z.boolean().optional().default(true),
+  columnMappingJson: z.record(z.string(), z.string().nullable()).default({}),
+  optionsJson: z.record(z.string(), z.any()).optional().default({}),
+});
+
 export const saveImportRowDecisionSchema = z.object({
   decisionType: z.enum(["accept", "edit", "ignore"]),
   finalCategoryId: z.string().nullable().optional(),
