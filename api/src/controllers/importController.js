@@ -6,7 +6,10 @@ import { Concept } from "../models/Concept.js";
 import { PriceRecord } from "../models/PriceRecord.js";
 import { Supplier } from "../models/Supplier.js";
 import { Category } from "../models/Category.js";
+import { Project } from "../models/Project.js";
+import mongoose from "mongoose";
 import { AppError } from "../utils/AppError.js";
+import { parseMoneyInput } from "../utils/money.js";
 import {
   getWorkbookPreview,
   getWorkbookSheetRows,
@@ -693,6 +696,79 @@ function getReviewStatus(decision) {
   return decision ? normalizeDecisionType(decision.decisionType) : "pending";
 }
 
+function toSafeDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function toNumber(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function buildConceptName(row) {
+  return (row.rawConcept || "").trim() || row.rawJson?.normalized?.concept || "Concepto importado";
+}
+
+async function resolveConceptForApply({ row, category, suggestedHistoric, actorUserId, mongoSession }) {
+  if (suggestedHistoric?.conceptId) {
+    const concept = await Concept.findById(suggestedHistoric.conceptId).session(mongoSession);
+    if (concept) {
+      return concept;
+    }
+  }
+
+  const normalizedName = row.normalizedConcept || normalizeText(row.rawConcept).normalized;
+  if (normalizedName) {
+    const existing = await Concept.findOne({ normalizedName, categoryId: category._id, isActive: true }).session(mongoSession);
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const concept = await Concept.create(
+    [
+      {
+        name: buildConceptName(row),
+        normalizedName: normalizedName || normalizeText(buildConceptName(row)).normalized,
+        categoryId: category._id,
+        mainType: category.mainType,
+        primaryUnit: row.rawJson?.normalized?.unit || row.rawUnit || "unidad",
+        calculationType: "fixed_unit",
+        requiresDimensions: false,
+        createdBy: actorUserId,
+        updatedBy: actorUserId,
+      },
+    ],
+    { session: mongoSession }
+  );
+
+  return concept[0];
+}
+
+async function detectPotentialDuplicate({ conceptId, categoryId, supplierId, priceDate, finalCost }) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const minDate = new Date(priceDate.getTime() - dayMs * 7);
+  const maxDate = new Date(priceDate.getTime() + dayMs * 7);
+  const minAmount = finalCost * 0.95;
+  const maxAmount = finalCost * 1.05;
+
+  const query = {
+    conceptId,
+    categoryId,
+    priceDate: { $gte: minDate, $lte: maxDate },
+    unitPrice: { $gte: minAmount, $lte: maxAmount },
+  };
+  if (supplierId) {
+    query.supplierId = supplierId;
+  }
+
+  return PriceRecord.findOne(query).select("_id priceDate unitPrice").lean();
+}
+
 export async function generateImportSessionSuggestions(req, res) {
   const session = await ImportSession.findById(req.params.id);
 
@@ -1123,15 +1199,211 @@ export async function applyImportSession(req, res) {
     throw new AppError("Import session not found", 404);
   }
 
-  if (["failed", "confirmed"].includes(session.status)) {
+  if (session.status === "failed") {
     throw new AppError("Import session cannot be applied in current status", 400);
   }
 
-  session.status = "reviewing";
-  await session.save();
+  const decisions = await ImportRowDecision.find({ importRowId: { $exists: true } }).lean();
+  const decisionIds = decisions.map((item) => item.importRowId);
+  const rows = await ImportRow.find({ _id: { $in: decisionIds }, sessionId: session.id }).lean();
+  const rowsById = new Map(rows.map((item) => [String(item._id), item]));
+  const scopedDecisions = decisions.filter((item) => rowsById.has(String(item.importRowId)));
 
-  res.status(202).json({
-    message: "Apply endpoint listo en modo stub. La persistencia a históricos se habilitará en la siguiente fase.",
+  if (!scopedDecisions.length) {
+    throw new AppError("La sesión no tiene decisiones guardadas para aplicar", 400);
+  }
+
+  const suggestionRows = await ImportRowSuggestion.find({ importRowId: { $in: rows.map((item) => item._id) } })
+    .select("importRowId suggestedHistoricId")
+    .lean();
+  const suggestionByRowId = new Map(suggestionRows.map((item) => [String(item.importRowId), item]));
+  const categoryIds = [...new Set(scopedDecisions.map((item) => item.finalCategoryId).filter(Boolean).map(String))];
+  const categoryDocs = await Category.find({ _id: { $in: categoryIds } }).select("_id mainType").lean();
+  const categoryById = new Map(categoryDocs.map((item) => [String(item._id), item]));
+  const projectIds = [...new Set(scopedDecisions.map((item) => item.finalWorkId).filter(Boolean).map(String))];
+  const projectDocs = projectIds.length ? await Project.find({ _id: { $in: projectIds } }).select("_id name isActive").lean() : [];
+  const projectById = new Map(projectDocs.map((item) => [String(item._id), item]));
+
+  const summary = {
+    totalReviewed: scopedDecisions.length,
+    eligible: 0,
+    applied: 0,
+    omitted: 0,
+    errors: 0,
+    duplicateWarnings: 0,
+    alreadyApplied: 0,
+    createdIds: [],
+    warnings: [],
+    errorRows: [],
+  };
+
+  const mongoSession = await mongoose.startSession();
+  try {
+    await mongoSession.withTransaction(async () => {
+      for (const decision of scopedDecisions) {
+        const row = rowsById.get(String(decision.importRowId));
+        if (!row) {
+          summary.omitted += 1;
+          continue;
+        }
+
+        const normalizedDecisionType = normalizeDecisionType(decision.decisionType);
+        if (!["accepted", "edited"].includes(normalizedDecisionType)) {
+          summary.omitted += 1;
+          continue;
+        }
+        summary.eligible += 1;
+
+        if (decision.savedHistoricId) {
+          summary.alreadyApplied += 1;
+          summary.omitted += 1;
+          summary.createdIds.push(String(decision.savedHistoricId));
+          continue;
+        }
+
+        const finalCategoryId = decision.finalCategoryId || null;
+        const finalCost = toNumber(decision.finalCost);
+        const finalDate = toSafeDate(decision.finalDate || row.rawJson?.normalized?.dateIso || session.defaultDate);
+        const finalSupplierId = decision.finalSupplierId || null;
+        const finalProjectId = decision.finalWorkId || session.obraId || null;
+
+        if (!finalCategoryId || !categoryById.get(String(finalCategoryId))) {
+          summary.errors += 1;
+          summary.errorRows.push({ importRowId: row._id, sheetRowNumber: row.sheetRowNumber, reason: "Categoría final inválida" });
+          continue;
+        }
+        if (finalCost === null || finalCost <= 0) {
+          summary.errors += 1;
+          summary.errorRows.push({ importRowId: row._id, sheetRowNumber: row.sheetRowNumber, reason: "Costo final inválido" });
+          continue;
+        }
+        if (!finalDate) {
+          summary.errors += 1;
+          summary.errorRows.push({ importRowId: row._id, sheetRowNumber: row.sheetRowNumber, reason: "Fecha final inválida o no resoluble" });
+          continue;
+        }
+        if (row.parseStatus === "error" && normalizedDecisionType !== "edited") {
+          summary.errors += 1;
+          summary.errorRows.push({
+            importRowId: row._id,
+            sheetRowNumber: row.sheetRowNumber,
+            reason: "Fila con parseStatus=error requiere corrección explícita",
+          });
+          continue;
+        }
+
+        const project = finalProjectId ? projectById.get(String(finalProjectId)) : null;
+        if (project && !project.isActive) {
+          summary.errors += 1;
+          summary.errorRows.push({ importRowId: row._id, sheetRowNumber: row.sheetRowNumber, reason: "Obra final inactiva" });
+          continue;
+        }
+
+        const suggestion = suggestionByRowId.get(String(row._id));
+        const suggestedHistoric = suggestion?.suggestedHistoricId
+          ? await PriceRecord.findById(suggestion.suggestedHistoricId).select("_id conceptId unit").session(mongoSession)
+          : null;
+        const category = categoryById.get(String(finalCategoryId));
+        const concept = await resolveConceptForApply({
+          row,
+          category,
+          suggestedHistoric,
+          actorUserId: req.user.id,
+          mongoSession,
+        });
+
+        const duplicate = await detectPotentialDuplicate({
+          conceptId: concept._id,
+          categoryId: finalCategoryId,
+          supplierId: finalSupplierId,
+          priceDate: finalDate,
+          finalCost,
+        });
+        if (duplicate) {
+          summary.duplicateWarnings += 1;
+          summary.warnings.push({
+            importRowId: row._id,
+            sheetRowNumber: row.sheetRowNumber,
+            duplicateHistoricId: duplicate._id,
+            reason: "Posible duplicado por concepto/costo/fecha/proveedor",
+          });
+        }
+
+        const money = parseMoneyInput(finalCost);
+        const created = await PriceRecord.create(
+          [
+            {
+              mainType: concept.mainType || category.mainType,
+              categoryId: finalCategoryId,
+              conceptId: concept._id,
+              supplierId: finalSupplierId,
+              projectId: finalProjectId,
+              unit: row.rawJson?.normalized?.unit || row.rawUnit || suggestedHistoric?.unit || concept.primaryUnit || "unidad",
+              priceDate: finalDate,
+              pricingMode: "unit_price",
+              originalAmount: money.normalizedAmount,
+              originalAmountCents: money.cents,
+              capturedAmount: money.normalizedString,
+              unitPrice: money.normalizedAmount,
+              totalPrice: null,
+              projectNameSnapshot: project?.name || "",
+              observations: decision.finalNotes || row.rawJson?.observations || "",
+              normalizedQuantity: row.rawJson?.normalized?.quantity ?? null,
+              normalizedUnit: row.rawJson?.normalized?.unit || null,
+              normalizedPrice: money.normalizedAmount,
+              attributes: {
+                importMeta: {
+                  sessionId: session.id,
+                  importRowId: row._id,
+                  fileName: session.fileName,
+                  rowNumber: row.sheetRowNumber,
+                  rawValues: row.rawJson?.rowValues || [],
+                },
+              },
+              sourceImportSessionId: session.id,
+              sourceImportRowId: row._id,
+              sourceFileName: session.fileName || "",
+              captureOrigin: "excel_import",
+              createdBy: req.user.id,
+              updatedBy: req.user.id,
+            },
+          ],
+          { session: mongoSession }
+        );
+        const createdRecord = created[0];
+
+        await ImportRowDecision.updateOne(
+          { _id: decision._id },
+          { $set: { savedHistoricId: createdRecord._id } },
+          { session: mongoSession }
+        );
+
+        summary.applied += 1;
+        summary.createdIds.push(String(createdRecord._id));
+      }
+
+      session.status = "confirmed";
+      session.optionsJson = {
+        ...(session.optionsJson || {}),
+        applySummary: {
+          appliedAt: new Date().toISOString(),
+          totalReviewed: summary.totalReviewed,
+          eligible: summary.eligible,
+          applied: summary.applied,
+          omitted: summary.omitted,
+          errors: summary.errors,
+          duplicateWarnings: summary.duplicateWarnings,
+          alreadyApplied: summary.alreadyApplied,
+        },
+      };
+      await session.save({ session: mongoSession });
+    });
+  } finally {
+    await mongoSession.endSession();
+  }
+
+  res.json({
+    summary,
     item: serializeSession(session),
   });
 }
