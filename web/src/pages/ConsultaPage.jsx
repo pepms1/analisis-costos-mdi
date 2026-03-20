@@ -3,40 +3,7 @@ import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { formatCurrency, formatDate, formatPercent } from "../utils/formatters";
-
-function normalizeInflation(adjustments) {
-  const inflationSetting = adjustments.find(
-    (item) => item.adjustmentType === "inflation" && item.scopeType === "general" && item.isActive
-  );
-
-  const inflationByYear = Object.fromEntries(
-    (inflationSetting?.factors || [])
-      .map((factor) => {
-        const year = Number(factor.label);
-        if (!Number.isInteger(year)) return null;
-        return [year, Number(factor.factor) - 1];
-      })
-      .filter(Boolean)
-  );
-
-  return {
-    inflationSetting,
-    inflationByYear,
-  };
-}
-
-function adjustedPriceWithInflation(baseAmount, fromDate, inflationByYear) {
-  if (!baseAmount || !fromDate) return null;
-  const startYear = new Date(fromDate).getUTCFullYear();
-  const currentYear = new Date().getUTCFullYear();
-
-  let factor = 1;
-  for (let year = startYear + 1; year <= currentYear; year += 1) {
-    factor *= 1 + Number(inflationByYear[year] || 0);
-  }
-
-  return Number(baseAmount) * factor;
-}
+import { calculateAdjustedPrice, parseInflationByYear } from "../utils/priceAdjustments";
 
 function classifyQuote(adjustedPrice, quote) {
   if (!adjustedPrice || !quote) return null;
@@ -131,23 +98,21 @@ function ConsultaPage() {
       .slice(0, 50);
   }, [concepts, filters.categoryId, filters.search]);
 
-  const { inflationSetting, inflationByYear } = useMemo(() => normalizeInflation(adjustments), [adjustments]);
+  const { inflationSetting, inflationByYear, inflationYears } = useMemo(() => parseInflationByYear(adjustments), [adjustments]);
   const selectedConcept = useMemo(
     () => concepts.find((concept) => concept.id === filters.conceptId) || null,
     [concepts, filters.conceptId]
   );
   const requiresDimensions = Boolean(selectedConcept && isDimensionalConcept(selectedConcept));
 
-  const recordsWithAdjusted = useMemo(
-    () =>
-      records.map((item) => ({
-        ...item,
-        adjustedAmount: adjustedPriceWithInflation(item.amount, item.priceDate, inflationByYear),
-      })),
+  const pricingSummary = useMemo(
+    () => calculateAdjustedPrice(records, inflationByYear),
     [records, inflationByYear]
   );
+  const recordsWithAdjusted = pricingSummary.entries;
+  const latestRecord = pricingSummary.latestRecord;
+  const firstRecord = pricingSummary.oldestRecord;
 
-  const latestRecord = recordsWithAdjusted[0] || null;
   const dimensionalReferenceRecord = useMemo(
     () =>
       recordsWithAdjusted.find(
@@ -157,22 +122,29 @@ function ConsultaPage() {
   );
 
   const baseRecord = requiresDimensions ? dimensionalReferenceRecord : latestRecord;
-  const latestAdjusted = baseRecord?.adjustedAmount || null;
+  const adjustedHeadlinePrice = pricingSummary.adjustedAverage;
   const targetMeasure = useMemo(() => normalizeTargetArea(selectedConcept, measureInputs), [selectedConcept, measureInputs]);
 
-  const adjustedNormalizedPrice =
-    requiresDimensions && baseRecord?.normalizedPrice
-      ? adjustedPriceWithInflation(baseRecord.normalizedPrice, baseRecord.priceDate, inflationByYear)
-      : null;
+  const normalizedPricingSummary = useMemo(
+    () => calculateAdjustedPrice(records, inflationByYear, { amountField: "normalizedPrice" }),
+    [records, inflationByYear]
+  );
+  const adjustedNormalizedPrice = normalizedPricingSummary.adjustedAverage;
 
   const estimatedComparablePrice =
     requiresDimensions
       ? adjustedNormalizedPrice && targetMeasure?.quantity
         ? adjustedNormalizedPrice * targetMeasure.quantity
         : null
-      : latestAdjusted;
+      : adjustedHeadlinePrice;
 
   const quoteEvaluation = classifyQuote(estimatedComparablePrice, Number(todayQuote));
+  const inflationLabel = inflationYears.length
+    ? `Actualizado al último índice disponible (${pricingSummary.targetYear})`
+    : "Sin inflación configurada";
+  const inflationCoverageLabel = pricingSummary.inflationMissingYears.length
+    ? `Faltan índices: ${pricingSummary.inflationMissingYears.join(", ")}`
+    : `Serie inflacionaria usada: ${inflationYears[0] || pricingSummary.targetYear}–${pricingSummary.targetYear}`;
 
   return (
     <section className="page-shell">
@@ -252,30 +224,37 @@ function ConsultaPage() {
       </div>
 
       <div className="stats-grid stats-grid-main">
-        <div className="card stat-card">
-          <p className="eyebrow">Medida histórica base</p>
-          <h3>{formatDimensions(baseRecord?.dimensions)}</h3>
-          <p className="muted">Área histórica base: {baseRecord?.normalizedQuantity ? `${baseRecord.normalizedQuantity.toFixed(3)} m2` : "—"}</p>
-        </div>
-        <div className="card stat-card">
-          <p className="eyebrow">Medida nueva</p>
-          <h3>{requiresDimensions ? `Largo ${measureInputs.largo || "—"} · Ancho ${measureInputs.ancho || "—"}` : "No aplica"}</h3>
-          <p className="muted">Área nueva: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
-        </div>
-        <div className="card stat-card">
-          <p className="eyebrow">Precio histórico</p>
-          <h3>{formatCurrency(baseRecord?.amount)}</h3>
-          <p className="muted">Fecha: {formatDate(baseRecord?.priceDate)}</p>
-        </div>
-        <div className="card stat-card">
+        <div className="card stat-card highlight-card">
           <p className="eyebrow">Precio ajustado</p>
-          <h3>{formatCurrency(latestAdjusted)}</h3>
-          <p className="muted">Inflación activa: {inflationSetting?.name || "Sin configurar"}</p>
+          <h3>{formatCurrency(adjustedHeadlinePrice)}</h3>
+          <p className="muted">{inflationLabel}</p>
+          <p className="muted">{pricingSummary.validEntries.length ? `${pricingSummary.validEntries.length} registros válidos` : "Sin registros válidos"}</p>
         </div>
         <div className="card stat-card">
-          <p className="eyebrow">Precio proporcional estimado</p>
-          <h3>{formatCurrency(estimatedComparablePrice)}</h3>
-          <p className="muted">Base por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
+          <p className="eyebrow">Último precio registrado</p>
+          <h3>{formatCurrency(latestRecord?.amount)}</h3>
+          <p className="muted">Fecha: {formatDate(latestRecord?.priceDate)}</p>
+          <p className="muted">Proveedor: {latestRecord?.supplierName || "—"}</p>
+        </div>
+        <div className="card stat-card">
+          <p className="eyebrow">Primer precio registrado</p>
+          <h3>{formatCurrency(firstRecord?.amount)}</h3>
+          <p className="muted">Fecha: {formatDate(firstRecord?.priceDate)}</p>
+          <p className="muted">Proveedor: {firstRecord?.supplierName || "—"}</p>
+        </div>
+        <div className="card stat-card">
+          <p className="eyebrow">Precio promedio</p>
+          <h3>{formatCurrency(pricingSummary.nominalAverage)}</h3>
+          <p className="muted">
+            Registros usados: {pricingSummary.stats.validRecords} de {pricingSummary.stats.totalRecords}
+          </p>
+          <p className="muted">Promedio simple de precios nominales válidos</p>
+        </div>
+        <div className="card stat-card">
+          <p className="eyebrow">Inflación aplicada</p>
+          <h3>{inflationSetting?.name || "Sin configuración activa"}</h3>
+          <p className="muted">{inflationCoverageLabel}</p>
+          <p className="muted">Base final: índice {pricingSummary.targetYear}</p>
         </div>
       </div>
 
@@ -301,6 +280,15 @@ function ConsultaPage() {
 
         <div className="card form-grid">
           <h3>Chequeo rápido de cotización</h3>
+          {requiresDimensions ? (
+            <div className="details-block">
+              <p className="muted">Medida histórica base: {formatDimensions(baseRecord?.dimensions)}</p>
+              <p className="muted">Área histórica base: {baseRecord?.normalizedQuantity ? `${baseRecord.normalizedQuantity.toFixed(3)} m2` : "—"}</p>
+              <p className="muted">Medida nueva: Largo {measureInputs.largo || "—"} · Ancho {measureInputs.ancho || "—"}</p>
+              <p className="muted">Área nueva: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
+              <p className="muted">Base ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
+            </div>
+          ) : null}
           <label className="field">
             <span>Precio cotizado hoy</span>
             <input
