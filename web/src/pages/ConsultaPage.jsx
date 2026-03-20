@@ -223,38 +223,50 @@ function ConsultaPage() {
         ) : null}
       </div>
 
-      <div className="stats-grid stats-grid-main">
-        <div className="card stat-card highlight-card">
+      <div className="stats-grid stats-grid-main consulta-summary-grid">
+        <div className="card stat-card highlight-card consulta-hero-card">
           <p className="eyebrow">Precio ajustado</p>
           <h3>{formatCurrency(adjustedHeadlinePrice)}</h3>
-          <p className="muted">{inflationLabel}</p>
-          <p className="muted">{pricingSummary.validEntries.length ? `${pricingSummary.validEntries.length} registros válidos` : "Sin registros válidos"}</p>
+          <p className="muted stat-subtitle">{inflationLabel}</p>
+          <p className="muted stat-meta">{pricingSummary.validEntries.length ? `${pricingSummary.validEntries.length} registros válidos` : "Sin registros válidos"}</p>
         </div>
-        <div className="card stat-card">
-          <p className="eyebrow">Último precio registrado</p>
-          <h3>{formatCurrency(latestRecord?.amount)}</h3>
-          <p className="muted">Fecha: {formatDate(latestRecord?.priceDate)}</p>
-          <p className="muted">Proveedor: {latestRecord?.supplierName || "—"}</p>
-        </div>
-        <div className="card stat-card">
-          <p className="eyebrow">Primer precio registrado</p>
-          <h3>{formatCurrency(firstRecord?.amount)}</h3>
-          <p className="muted">Fecha: {formatDate(firstRecord?.priceDate)}</p>
-          <p className="muted">Proveedor: {firstRecord?.supplierName || "—"}</p>
-        </div>
-        <div className="card stat-card">
-          <p className="eyebrow">Precio promedio</p>
-          <h3>{formatCurrency(pricingSummary.nominalAverage)}</h3>
-          <p className="muted">
-            Registros usados: {pricingSummary.stats.validRecords} de {pricingSummary.stats.totalRecords}
+        <div className="card stat-card consulta-secondary-card">
+          <p className="eyebrow">
+            <span className="label-desktop">Último precio registrado</span>
+            <span className="label-mobile">Último precio</span>
           </p>
-          <p className="muted">Promedio simple de precios nominales válidos</p>
+          <h3>{formatCurrency(latestRecord?.amount)}</h3>
+          <p className="muted stat-meta">Fecha: {formatDate(latestRecord?.priceDate)}</p>
+          <p className="muted stat-meta">Prov: {latestRecord?.supplierName || "—"}</p>
         </div>
-        <div className="card stat-card">
-          <p className="eyebrow">Inflación aplicada</p>
+        <div className="card stat-card consulta-secondary-card">
+          <p className="eyebrow">
+            <span className="label-desktop">Primer precio registrado</span>
+            <span className="label-mobile">Primer precio</span>
+          </p>
+          <h3>{formatCurrency(firstRecord?.amount)}</h3>
+          <p className="muted stat-meta">Fecha: {formatDate(firstRecord?.priceDate)}</p>
+          <p className="muted stat-meta">Prov: {firstRecord?.supplierName || "—"}</p>
+        </div>
+        <div className="card stat-card consulta-secondary-card">
+          <p className="eyebrow">
+            <span className="label-desktop">Precio promedio</span>
+            <span className="label-mobile">Promedio</span>
+          </p>
+          <h3>{formatCurrency(pricingSummary.nominalAverage)}</h3>
+          <p className="muted stat-meta">
+            Registros: {pricingSummary.stats.validRecords}/{pricingSummary.stats.totalRecords}
+          </p>
+          <p className="muted stat-meta">Nominal simple</p>
+        </div>
+        <div className="card stat-card consulta-secondary-card">
+          <p className="eyebrow">
+            <span className="label-desktop">Inflación aplicada</span>
+            <span className="label-mobile">Inflación</span>
+          </p>
           <h3>{inflationSetting?.name || "Sin configuración activa"}</h3>
-          <p className="muted">{inflationCoverageLabel}</p>
-          <p className="muted">Base final: índice {pricingSummary.targetYear}</p>
+          <p className="muted stat-meta">{inflationCoverageLabel}</p>
+          <p className="muted stat-meta">Base: índice {pricingSummary.targetYear}</p>
         </div>
       </div>
 
