@@ -6,7 +6,7 @@ import { Project } from "../models/Project.js";
 import { Supplier } from "../models/Supplier.js";
 import { AppError } from "../utils/AppError.js";
 import { centsToAmount, parseMoneyInput } from "../utils/money.js";
-import { buildPricingPayload } from "../utils/normalization.js";
+import { buildPricingPayload, normalizeDimensions, toMeters } from "../utils/normalization.js";
 
 function parsePositiveInt(value) {
   if (!value) return null;
@@ -169,6 +169,23 @@ function resolvePricingMode(mainType, pricingMode) {
   return pricingMode || "unit_price";
 }
 
+function buildGeometryMeta(dimensions = {}) {
+  if (!dimensions) return null;
+  const sourceUnit = dimensions.measurementUnit || "cm";
+  const largoRaw = dimensions.largo ?? dimensions.length ?? dimensions.width ?? null;
+  const anchoRaw = dimensions.ancho ?? dimensions.height ?? null;
+  const lengthM = toMeters(largoRaw, sourceUnit);
+  const widthM = toMeters(anchoRaw, sourceUnit);
+  const areaM2 = lengthM && widthM ? lengthM * widthM : null;
+  if (!lengthM || !widthM || !areaM2) return null;
+  return {
+    lengthM,
+    widthM,
+    areaM2,
+    sourceUnit,
+  };
+}
+
 function buildRecordPayload(validatedBody, reqUserId, concept, project) {
   const {
     categoryId,
@@ -176,10 +193,16 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     supplierId,
     projectId,
     mainType,
+    unit,
     dimensions,
     pricingMode,
     amount,
     attributes,
+    commercialUnit,
+    commercialUnitPrice,
+    analysisUnit,
+    analysisUnitPrice,
+    geometryMeta,
     ...rest
   } = validatedBody;
 
@@ -193,6 +216,16 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     requiresDimensions: concept.requiresDimensions,
   });
 
+  const normalizedDimensions = normalizeDimensions(concept.calculationType, dimensions, concept.requiresDimensions);
+  const computedGeometryMeta = geometryMeta || buildGeometryMeta(dimensions);
+  const analysisUnitNormalized = (analysisUnit || "").trim().toLowerCase() || null;
+  const effectiveArea =
+    computedGeometryMeta?.areaM2 || normalizedDimensions?.normalizedQuantity || pricingPayload.normalizedQuantity || null;
+  const computedAnalysisUnitPrice =
+    analysisUnitNormalized === "m2" && effectiveArea && pricingPayload.totalPrice
+      ? Number((pricingPayload.totalPrice / effectiveArea).toFixed(6))
+      : null;
+
   return {
     ...rest,
     mainType,
@@ -204,6 +237,11 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     dimensions,
     pricingMode: resolvePricingMode(mainType, pricingMode),
     attributes: attributes || {},
+    geometryMeta: computedGeometryMeta,
+    commercialUnit: commercialUnit || unit || null,
+    commercialUnitPrice: commercialUnitPrice ?? pricingPayload.totalPrice ?? null,
+    analysisUnit: analysisUnitNormalized,
+    analysisUnitPrice: analysisUnitPrice ?? computedAnalysisUnitPrice,
     originalAmount: normalizedAmount,
     originalAmountCents,
     capturedAmount: normalizedString,

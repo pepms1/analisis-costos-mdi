@@ -92,6 +92,19 @@ export const createPriceRecordSchema = z.object({
   amount: z.union([z.number().positive(), z.string().min(1)]),
   location: z.string().optional().default(""),
   observations: z.string().optional().default(""),
+  commercialUnit: z.string().nullable().optional(),
+  commercialUnitPrice: z.number().nonnegative().nullable().optional(),
+  analysisUnit: z.string().nullable().optional(),
+  analysisUnitPrice: z.number().nonnegative().nullable().optional(),
+  geometryMeta: z
+    .object({
+      lengthM: z.number().positive().nullable().optional(),
+      widthM: z.number().positive().nullable().optional(),
+      areaM2: z.number().positive().nullable().optional(),
+      sourceUnit: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   dimensions: z
     .object({
       largo: z.number().positive().optional(),
