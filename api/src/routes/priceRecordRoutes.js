@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createPriceRecord, deletePriceRecord, listPriceRecords, updatePriceRecord } from "../controllers/priceRecordController.js";
-import { requirePermission } from "../middlewares/authMiddleware.js";
+import { requirePermission, requireRoles } from "../middlewares/authMiddleware.js";
 import { validate } from "../middlewares/validate.js";
 import { createPriceRecordSchema, updatePriceRecordSchema } from "../schemas/authSchemas.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -31,6 +31,11 @@ router.post(
   asyncHandler(createPriceRecord)
 );
 router.put("/:id", requirePermission(PERMISSIONS.PRICES_EDIT), validate(updatePriceRecordSchema), asyncHandler(updatePriceRecord));
-router.delete("/:id", requirePermission(PERMISSIONS.PRICES_DELETE, { audit: true }), asyncHandler(deletePriceRecord));
+router.delete(
+  "/:id",
+  requirePermission(PERMISSIONS.PRICES_DELETE, { audit: true }),
+  requireRoles("superadmin"),
+  asyncHandler(deletePriceRecord)
+);
 
 export default router;

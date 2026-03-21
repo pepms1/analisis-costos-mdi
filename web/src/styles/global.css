@@ -334,6 +334,12 @@ th {
   gap: 12px;
 }
 
+.historical-geometry-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 130px;
+}
+
 .auth-shell {
   min-height: 100vh;
   display: grid;

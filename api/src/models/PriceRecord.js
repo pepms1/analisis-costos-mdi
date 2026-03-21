@@ -50,6 +50,9 @@ const priceRecordSchema = new mongoose.Schema(
     captureOrigin: { type: String, default: "" },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },
   { timestamps: true }
 );
@@ -58,5 +61,6 @@ priceRecordSchema.index({ projectId: 1 });
 priceRecordSchema.index({ conceptId: 1 });
 priceRecordSchema.index({ supplierId: 1 });
 priceRecordSchema.index({ projectId: 1, conceptId: 1, priceDate: -1 });
+priceRecordSchema.index({ isDeleted: 1, priceDate: -1 });
 
 export const PriceRecord = mongoose.model("PriceRecord", priceRecordSchema);
