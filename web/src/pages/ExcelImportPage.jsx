@@ -83,6 +83,14 @@ function ExcelImportPage() {
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [documentContext, setDocumentContext] = useState({
+    supplierId: "",
+    workId: "",
+    year: "",
+    date: "",
+    confidence: "",
+    reasons: [],
+  });
 
   const supplierById = useMemo(() => {
     const map = new Map();
@@ -99,6 +107,13 @@ function ExcelImportPage() {
     });
     return map;
   }, [catalogs.categories]);
+  const projectById = useMemo(() => {
+    const map = new Map();
+    catalogs.projects.forEach((project) => {
+      map.set(String(project.id), project.name);
+    });
+    return map;
+  }, [catalogs.projects]);
 
   const previewColumns = useMemo(() => preview?.columns || [], [preview]);
 
@@ -155,11 +170,16 @@ function ExcelImportPage() {
       (finalValues.supplierId ? supplierById.get(String(finalValues.supplierId)) : "") ||
       row.suggestion?.reasonJson?.matched?.supplierName ||
       "—";
+    const workName =
+      (finalValues.workId ? projectById.get(String(finalValues.workId)) : "") ||
+      row.suggestion?.reasonJson?.matched?.workName ||
+      "—";
 
     return {
       source,
       categoryName,
       supplierName,
+      workName,
       cost: finalValues.cost ?? "—",
       notes: finalValues.notes || "sin notas",
     };
@@ -178,6 +198,15 @@ function ExcelImportPage() {
     setHeaderRowIndex(item.detectedHeaderRowIndex || 1);
     setDataStartRowIndex(item.detectedDataStartRowIndex || 2);
     setColumnMapping(item.detectedMapping || {});
+    const ctx = item.detectedContext || {};
+    setDocumentContext({
+      supplierId: ctx.detectedSupplierId || "",
+      workId: ctx.detectedWorkId || "",
+      year: ctx.detectedYear ? String(ctx.detectedYear) : "",
+      date: ctx.detectedDate ? String(ctx.detectedDate).slice(0, 10) : "",
+      confidence: ctx.detectedContextJson?.confidence || "",
+      reasons: ctx.detectedContextJson?.reasons || [],
+    });
   }
 
   async function loadParsedRows(sessionId) {
@@ -293,6 +322,15 @@ function ExcelImportPage() {
           dataStartRowIndex: Number(dataStartRowIndex) || 2,
           ignoreEmptyRows,
           columnMappingJson: cleanedMapping,
+          detectedSupplierId: documentContext.supplierId || null,
+          detectedWorkId: documentContext.workId || null,
+          detectedYear: documentContext.year ? Number(documentContext.year) : null,
+          detectedDate: documentContext.date || null,
+          detectedContextJson: {
+            confidence: documentContext.confidence || "manual",
+            reasons: documentContext.reasons || [],
+            editedInUi: true,
+          },
         }),
       });
 
@@ -506,6 +544,14 @@ function ExcelImportPage() {
         setSelectedFileName(loadedSession?.fileName || "");
         setSheets(sheetsResponse.items || []);
         setColumnMapping(loadedSession?.columnMappingJson || {});
+        setDocumentContext({
+          supplierId: loadedSession?.detectedSupplierId || "",
+          workId: loadedSession?.detectedWorkId || "",
+          year: loadedSession?.detectedYear ? String(loadedSession.detectedYear) : "",
+          date: loadedSession?.detectedDate ? String(loadedSession.detectedDate).slice(0, 10) : "",
+          confidence: loadedSession?.detectedContextJson?.confidence || "",
+          reasons: loadedSession?.detectedContextJson?.reasons || [],
+        });
 
         const currentSheet = loadedSession?.sheetName || sheetsResponse.items?.[0]?.name || "";
         setSelectedSheet(currentSheet);
@@ -609,6 +655,56 @@ function ExcelImportPage() {
               </label>
             ))}
           </div>
+        </section>
+
+        <section className="import-panel card-subtle">
+          <h3>Contexto detectado del documento</h3>
+          <p className="muted">Editable por el usuario. Se usa como sugerencia/default, nunca como asignación obligatoria.</p>
+          <div className="mapping-grid">
+            <label>
+              Proveedor sugerido
+              <select
+                value={documentContext.supplierId}
+                onChange={(event) => setDocumentContext((prev) => ({ ...prev, supplierId: event.target.value }))}
+              >
+                <option value="">Sin proveedor sugerido</option>
+                {catalogs.suppliers.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Obra sugerida
+              <select value={documentContext.workId} onChange={(event) => setDocumentContext((prev) => ({ ...prev, workId: event.target.value }))}>
+                <option value="">Sin obra sugerida</option>
+                {catalogs.projects.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Año sugerido
+              <input
+                type="number"
+                min="1900"
+                max="2100"
+                value={documentContext.year}
+                onChange={(event) => setDocumentContext((prev) => ({ ...prev, year: event.target.value }))}
+              />
+            </label>
+            <label>
+              Fecha base sugerida
+              <input type="date" value={documentContext.date} onChange={(event) => setDocumentContext((prev) => ({ ...prev, date: event.target.value }))} />
+            </label>
+          </div>
+          <p className="muted">Confianza heurística: <strong>{documentContext.confidence || "sin evaluar"}</strong></p>
+          {documentContext.reasons?.length ? (
+            <ul>
+              {documentContext.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          ) : null}
         </section>
 
         <div className="button-row">
@@ -803,6 +899,8 @@ function ExcelImportPage() {
                       <strong>Proveedor final:</strong> {finalDisplay.supplierName}
                       <br />
                       <strong>Categoría final:</strong> {finalDisplay.categoryName}
+                      <br />
+                      <strong>Obra final:</strong> {finalDisplay.workName}
                       <br />
                       <strong>Costo/notas:</strong> {finalDisplay.cost} · {finalDisplay.notes}
                       <br />

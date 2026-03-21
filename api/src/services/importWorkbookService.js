@@ -297,8 +297,8 @@ export function getWorkbookPreview(filePath, sheetName) {
   return runParser(filePath, "preview", sheetName);
 }
 
-export function getWorkbookSheetRows(filePath, sheetName) {
-  const payload = runParser(filePath, "rows", sheetName);
+export function getWorkbookSheetRows(filePath, sheetName, limit = null) {
+  const payload = runParser(filePath, "rows", sheetName, limit);
   return {
     sheet: payload.sheet,
     rowCount: payload.rowCount,

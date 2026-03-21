@@ -169,6 +169,11 @@ export const saveImportSessionMappingSchema = z.object({
   dataStartRowIndex: z.number().int().min(1),
   ignoreEmptyRows: z.boolean().optional().default(true),
   columnMappingJson: z.record(z.string(), z.string().nullable()).default({}),
+  detectedSupplierId: z.string().nullable().optional(),
+  detectedWorkId: z.string().nullable().optional(),
+  detectedYear: z.number().int().min(1900).max(2100).nullable().optional(),
+  detectedDate: z.string().nullable().optional(),
+  detectedContextJson: z.record(z.string(), z.any()).nullable().optional(),
   optionsJson: z.record(z.string(), z.any()).optional().default({}),
 });
 

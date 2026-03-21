@@ -55,6 +55,11 @@ function serializeSession(session) {
     defaultSupplierId: session.defaultSupplierId,
     defaultCategoryId: session.defaultCategoryId,
     defaultDate: session.defaultDate,
+    detectedSupplierId: session.detectedSupplierId || null,
+    detectedWorkId: session.detectedWorkId || null,
+    detectedYear: session.detectedYear ?? null,
+    detectedDate: session.detectedDate || null,
+    detectedContextJson: session.detectedContextJson || null,
     columnMappingJson: session.columnMappingJson,
     optionsJson: session.optionsJson,
     createdBy: session.createdBy,
@@ -129,6 +134,188 @@ function detectHeaderAndMapping(rows = []) {
     detectedDataStartRowIndex: bestRowIndex + 2,
     detectedMapping,
     columns,
+  };
+}
+
+function getCellPositions(rowValues = []) {
+  const positions = [];
+  rowValues.forEach((cell, index) => {
+    const text = String(cell || "").trim();
+    if (text) {
+      positions.push({ colIndex: index, value: text });
+    }
+  });
+  return positions;
+}
+
+function getContextDateFromYear(year) {
+  if (!year) return null;
+  return new Date(Date.UTC(Number(year), 0, 1));
+}
+
+function detectDocumentContext({
+  rowEntries = [],
+  detectedHeaderRowIndex = 1,
+  suppliers = [],
+  projects = [],
+}) {
+  if (!rowEntries.length) {
+    return {
+      detectedSupplierId: null,
+      detectedWorkId: null,
+      detectedYear: null,
+      detectedDate: null,
+      detectedContextJson: {
+        confidence: "low",
+        reasons: ["No se detectaron filas con contenido para inferir contexto."],
+      },
+    };
+  }
+
+  const headerEntry = rowEntries.find((entry) => entry.rowNumber === detectedHeaderRowIndex);
+  const headerPositions = getCellPositions(headerEntry?.values || []);
+  const headerMinCol = headerPositions.length ? Math.min(...headerPositions.map((item) => item.colIndex)) : 0;
+  const headerMaxCol = headerPositions.length ? Math.max(...headerPositions.map((item) => item.colIndex)) : 8;
+
+  const scanEntries = rowEntries.filter((entry) => {
+    if (entry.rowNumber <= 15) return true;
+    if (Math.abs(entry.rowNumber - detectedHeaderRowIndex) <= 4) return true;
+    if (entry.rowNumber < detectedHeaderRowIndex) return true;
+    const positions = getCellPositions(entry.values || []);
+    return positions.some((item) => item.colIndex < headerMinCol - 1 || item.colIndex > headerMaxCol + 1);
+  });
+
+  const candidateTokens = [];
+  scanEntries.forEach((entry) => {
+    const positions = getCellPositions(entry.values || []);
+    positions.forEach(({ colIndex, value }) => {
+      const outsideHeaderRange = colIndex < headerMinCol - 1 || colIndex > headerMaxCol + 1;
+      const aroundHeader = Math.abs(entry.rowNumber - detectedHeaderRowIndex) <= 4;
+      const inFirstRows = entry.rowNumber <= 15;
+      const zone = outsideHeaderRange ? "outside_table" : aroundHeader ? "around_header" : inFirstRows ? "first_rows" : "other";
+
+      candidateTokens.push({
+        rowNumber: entry.rowNumber,
+        colIndex,
+        value,
+        normalized: normalizeText(value).normalized,
+        zone,
+      });
+    });
+  });
+
+  const supplierScores = new Map();
+  const projectScores = new Map();
+  const reasons = [];
+
+  suppliers.forEach((supplier) => {
+    const normalizedName = normalizeText(supplier.name).normalized;
+    if (!normalizedName) return;
+
+    candidateTokens.forEach((token) => {
+      if (!token.normalized) return;
+      const exact = token.normalized === normalizedName;
+      const partial = token.normalized.includes(normalizedName) || normalizedName.includes(token.normalized);
+      if (!exact && !partial) return;
+
+      const increment = exact ? 0.55 : 0.35;
+      const weight =
+        token.zone === "first_rows" ? 1 :
+        token.zone === "around_header" ? 0.9 :
+        token.zone === "outside_table" ? 0.85 : 0.6;
+
+      const current = supplierScores.get(String(supplier._id)) || { score: 0, hits: [] };
+      current.score += increment * weight;
+      current.hits.push({
+        row: token.rowNumber,
+        col: token.colIndex,
+        value: token.value,
+        mode: exact ? "exact" : "partial",
+        zone: token.zone,
+      });
+      supplierScores.set(String(supplier._id), current);
+    });
+  });
+
+  projects.forEach((project) => {
+    const normalizedName = normalizeText(project.name).normalized;
+    if (!normalizedName) return;
+
+    candidateTokens.forEach((token) => {
+      if (!token.normalized) return;
+      const exact = token.normalized === normalizedName;
+      const partial = token.normalized.includes(normalizedName) || normalizedName.includes(token.normalized);
+      if (!exact && !partial) return;
+
+      const increment = exact ? 0.6 : 0.35;
+      const weight =
+        token.zone === "first_rows" ? 1 :
+        token.zone === "around_header" ? 0.9 :
+        token.zone === "outside_table" ? 0.85 : 0.6;
+
+      const current = projectScores.get(String(project._id)) || { score: 0, hits: [] };
+      current.score += increment * weight;
+      current.hits.push({
+        row: token.rowNumber,
+        col: token.colIndex,
+        value: token.value,
+        mode: exact ? "exact" : "partial",
+        zone: token.zone,
+      });
+      projectScores.set(String(project._id), current);
+    });
+  });
+
+  const yearMatches = [];
+  candidateTokens.forEach((token) => {
+    const regex = /\b(19\d{2}|20\d{2}|21\d{2})\b/g;
+    let match = regex.exec(token.value);
+    while (match) {
+      const year = Number(match[1]);
+      if (year >= 1990 && year <= 2100) {
+        yearMatches.push({
+          year,
+          row: token.rowNumber,
+          col: token.colIndex,
+          value: token.value,
+          zone: token.zone,
+          score: token.zone === "first_rows" || token.zone === "around_header" ? 0.7 : 0.4,
+        });
+      }
+      match = regex.exec(token.value);
+    }
+  });
+
+  const bestSupplier = [...supplierScores.entries()]
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.score - a.score)[0];
+  const bestProject = [...projectScores.entries()]
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.score - a.score)[0];
+  const bestYear = yearMatches.sort((a, b) => b.score - a.score)[0] || null;
+
+  if (bestSupplier) reasons.push(`Proveedor detectado por coincidencias de texto (${bestSupplier.hits.length} match).`);
+  if (bestProject) reasons.push(`Obra detectada por coincidencias de texto (${bestProject.hits.length} match).`);
+  if (bestYear) reasons.push(`Año detectado desde celdas de contexto (${bestYear.year}).`);
+  if (!reasons.length) reasons.push("No se detectó contexto fuerte en las celdas escaneadas.");
+
+  const maxScore = Math.max(bestSupplier?.score || 0, bestProject?.score || 0, bestYear?.score || 0);
+  const confidence = maxScore >= 1.2 ? "high" : maxScore >= 0.7 ? "medium" : "low";
+
+  return {
+    detectedSupplierId: bestSupplier && bestSupplier.score >= 0.45 ? bestSupplier.id : null,
+    detectedWorkId: bestProject && bestProject.score >= 0.45 ? bestProject.id : null,
+    detectedYear: bestYear ? bestYear.year : null,
+    detectedDate: bestYear ? getContextDateFromYear(bestYear.year) : null,
+    detectedContextJson: {
+      confidence,
+      scannedRows: scanEntries.map((entry) => entry.rowNumber),
+      headerRange: { minCol: headerMinCol, maxCol: headerMaxCol },
+      reasons,
+      supplier: bestSupplier || null,
+      work: bestProject || null,
+      year: bestYear || null,
+    },
   };
 }
 
@@ -223,8 +410,27 @@ export async function getImportSessionPreview(req, res) {
   const filePath = resolveStoredFilePath(getSessionStorageName(session));
   const requestedSheet = req.query.sheet?.toString() || session.sheetName || "";
   const preview = getWorkbookPreview(filePath, requestedSheet);
+  const scanPayload = getWorkbookSheetRows(filePath, requestedSheet, 180);
 
   const { detectedHeaderRowIndex, detectedDataStartRowIndex, detectedMapping, columns } = detectHeaderAndMapping(preview.rows || []);
+  const [suppliers, projects] = await Promise.all([
+    Supplier.find({ isActive: true }).select("_id name").lean(),
+    Project.find({ isActive: true }).select("_id name").lean(),
+  ]);
+
+  const detectedContext = detectDocumentContext({
+    rowEntries: scanPayload.rowEntries || [],
+    detectedHeaderRowIndex,
+    suppliers,
+    projects,
+  });
+
+  session.detectedSupplierId = detectedContext.detectedSupplierId;
+  session.detectedWorkId = detectedContext.detectedWorkId;
+  session.detectedYear = detectedContext.detectedYear;
+  session.detectedDate = detectedContext.detectedDate;
+  session.detectedContextJson = detectedContext.detectedContextJson;
+  await session.save();
 
   res.json({
     item: {
@@ -235,6 +441,7 @@ export async function getImportSessionPreview(req, res) {
       detectedHeaderRowIndex,
       detectedDataStartRowIndex,
       detectedMapping,
+      detectedContext,
     },
   });
 }
@@ -257,6 +464,13 @@ export async function saveImportSessionMapping(req, res) {
     dataStartRowIndex: payload.dataStartRowIndex,
     ignoreEmptyRows: payload.ignoreEmptyRows,
   };
+  session.detectedSupplierId = payload.detectedSupplierId ?? session.detectedSupplierId ?? null;
+  session.detectedWorkId = payload.detectedWorkId ?? session.detectedWorkId ?? null;
+  session.detectedYear = payload.detectedYear ?? session.detectedYear ?? null;
+  session.detectedDate = payload.detectedDate ? new Date(payload.detectedDate) : session.detectedDate ?? null;
+  if (payload.detectedContextJson) {
+    session.detectedContextJson = payload.detectedContextJson;
+  }
   session.status = "mapped";
 
   await session.save();
@@ -803,10 +1017,13 @@ export async function generateImportSessionSuggestions(req, res) {
   const conceptDocs = await Concept.find({ isActive: true }).select("_id name normalizedName categoryId primaryUnit").lean();
   const supplierDocs = await Supplier.find({ isActive: true }).select("_id name").lean();
   const categoryDocs = await Category.find({ isActive: true }).select("_id name").lean();
+  const projectDocs = await Project.find({ isActive: true }).select("_id name").lean();
 
   const conceptById = new Map(conceptDocs.map((item) => [String(item._id), item]));
   const supplierById = new Map(supplierDocs.map((item) => [String(item._id), item]));
   const categoryById = new Map(categoryDocs.map((item) => [String(item._id), item]));
+  const projectById = new Map(projectDocs.map((item) => [String(item._id), item]));
+  const detectedSupplierName = session.detectedSupplierId ? supplierById.get(String(session.detectedSupplierId))?.name || "" : "";
 
   const conceptNormalizedMap = new Map(conceptDocs.map((concept) => [concept.normalizedName, concept]));
 
@@ -858,7 +1075,7 @@ export async function generateImportSessionSuggestions(req, res) {
     }
 
     const rowUnit = row.rawJson?.normalized?.unit || row.rawUnit;
-    const rowSupplier = row.rawSupplier || "";
+    const rowSupplier = row.rawSupplier || detectedSupplierName || "";
     const rowUnitPrice = row.rawJson?.normalized?.unitPrice;
     const conceptFromCatalog = conceptNormalizedMap.get(row.normalizedConcept);
 
@@ -895,13 +1112,21 @@ export async function generateImportSessionSuggestions(req, res) {
     const best = rankedCandidates[0];
 
     if (!best || best.finalScore < 0.5) {
+      const fallbackDate = row.rawJson?.normalized?.dateIso || session.detectedDate || session.defaultDate || null;
       suggestionDocs.push({
         importRowId: row._id,
+        suggestedSupplierId: row.rawSupplier ? null : session.detectedSupplierId || session.defaultSupplierId || null,
+        suggestedWorkId: session.detectedWorkId || session.obraId || null,
+        suggestedDate: fallbackDate,
         score: 0,
         reasonJson: {
           confidenceLabel: "low",
-          reasons: ["Sin coincidencia confiable"],
+          reasons: ["Sin coincidencia confiable", "Se aplicaron defaults de contexto del documento cuando fue posible."],
           breakdown: { concept: 0, unit: 0, supplier: 0, recency: 0, coherence: 0 },
+          matched: {
+            supplierName: session.detectedSupplierId ? supplierById.get(String(session.detectedSupplierId))?.name || "" : "",
+            workName: session.detectedWorkId ? projectById.get(String(session.detectedWorkId))?.name || "" : "",
+          },
         },
       });
       rowUpdates.push({
@@ -922,6 +1147,20 @@ export async function generateImportSessionSuggestions(req, res) {
       categoryById,
       frequentCategoryByConcept,
     });
+    if (!row.rawSupplier && !suggestion.suggestedSupplierId && (session.detectedSupplierId || session.defaultSupplierId)) {
+      suggestion.suggestedSupplierId = session.detectedSupplierId || session.defaultSupplierId;
+      suggestion.reasonJson.reasons.push("Proveedor sugerido desde contexto global del documento.");
+      suggestion.reasonJson.matched.supplierName = supplierById.get(String(suggestion.suggestedSupplierId))?.name || "";
+    }
+    if (!suggestion.suggestedWorkId && (session.detectedWorkId || session.obraId)) {
+      suggestion.suggestedWorkId = session.detectedWorkId || session.obraId;
+      suggestion.reasonJson.reasons.push("Obra sugerida desde contexto global del documento.");
+      suggestion.reasonJson.matched.workName = projectById.get(String(suggestion.suggestedWorkId))?.name || "";
+    }
+    if (!row.rawJson?.normalized?.dateIso && !suggestion.suggestedDate && (session.detectedDate || session.defaultDate)) {
+      suggestion.suggestedDate = session.detectedDate || session.defaultDate;
+      suggestion.reasonJson.reasons.push("Fecha sugerida desde contexto global del documento.");
+    }
 
     suggestionDocs.push(suggestion);
 
@@ -997,7 +1236,7 @@ export async function generateImportSessionSuggestions(req, res) {
 }
 
 export async function listImportRows(req, res) {
-  const session = await ImportSession.findById(req.params.id).select("_id");
+  const session = await ImportSession.findById(req.params.id).select("_id obraId defaultDate defaultSupplierId detectedWorkId detectedDate detectedSupplierId");
 
   if (!session) {
     throw new AppError("Import session not found", 404);
@@ -1035,6 +1274,30 @@ export async function listImportRows(req, res) {
     const serializedDecision = serializeDecision(decision);
     const reviewStatus = getReviewStatus(decision);
     const confidenceLabel = serializedSuggestion?.reasonJson?.confidenceLabel || "no_match";
+    const sessionFallbackDate = session.detectedDate || session.defaultDate || null;
+    const sessionFallbackSupplier = session.detectedSupplierId || session.defaultSupplierId || null;
+    const sessionFallbackWork = session.detectedWorkId || session.obraId || null;
+    if (serializedSuggestion) {
+      if (!serializedSuggestion.suggestedSupplierId && !row.rawSupplier && sessionFallbackSupplier) {
+        serializedSuggestion.suggestedSupplierId = sessionFallbackSupplier;
+      }
+      if (!serializedSuggestion.suggestedWorkId && sessionFallbackWork) {
+        serializedSuggestion.suggestedWorkId = sessionFallbackWork;
+      }
+      if (!serializedSuggestion.suggestedDate && !row.rawJson?.normalized?.dateIso && sessionFallbackDate) {
+        serializedSuggestion.suggestedDate = sessionFallbackDate;
+      }
+    }
+    const finalValues = resolveFinalValues(row, serializedSuggestion, serializedDecision);
+    if (!finalValues.supplierId && !row.rawSupplier && sessionFallbackSupplier) {
+      finalValues.supplierId = sessionFallbackSupplier;
+    }
+    if (!finalValues.workId && sessionFallbackWork) {
+      finalValues.workId = sessionFallbackWork;
+    }
+    if (!finalValues.date && sessionFallbackDate) {
+      finalValues.date = sessionFallbackDate;
+    }
     return {
       id: row._id.toString(),
       sessionId: row.sessionId,
@@ -1056,7 +1319,7 @@ export async function listImportRows(req, res) {
       reviewStatus,
       suggestion: serializedSuggestion,
       decision: serializedDecision,
-      finalValues: resolveFinalValues(row, serializedSuggestion, serializedDecision),
+      finalValues,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -1286,9 +1549,12 @@ export async function applyImportSession(req, res) {
 
         const finalCategoryId = decision.finalCategoryId || null;
         const finalCost = toNumber(decision.finalCost);
-        const finalDate = toSafeDate(decision.finalDate || row.rawJson?.normalized?.dateIso || session.defaultDate);
-        const finalSupplierId = decision.finalSupplierId || null;
-        const finalProjectId = decision.finalWorkId || session.obraId || null;
+        const inferredDateFromYear = session.detectedYear ? getContextDateFromYear(session.detectedYear) : null;
+        const finalDate = toSafeDate(
+          decision.finalDate || row.rawJson?.normalized?.dateIso || session.detectedDate || session.defaultDate || inferredDateFromYear
+        );
+        const finalSupplierId = decision.finalSupplierId || session.detectedSupplierId || session.defaultSupplierId || null;
+        const finalProjectId = decision.finalWorkId || session.detectedWorkId || session.obraId || null;
 
         if (!finalCategoryId || !categoryById.get(String(finalCategoryId))) {
           summary.errors += 1;
