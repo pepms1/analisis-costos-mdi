@@ -17,6 +17,7 @@ const catalogLinks = [
   { to: "/concepts", label: "Conceptos", permission: PERMISSIONS.CATALOGS_VIEW },
   { to: "/suppliers", label: "Proveedores", permission: PERMISSIONS.CATALOGS_VIEW },
   { to: "/projects", label: "Obras", permission: PERMISSIONS.BUDGETS_VIEW },
+  { to: "/catalogos/historicos", label: "Administración de históricos", permission: PERMISSIONS.CATALOGS_VIEW },
   { to: "/inflacion", label: "Inflación", permission: PERMISSIONS.INFLATION_VIEW },
 ];
 
