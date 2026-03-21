@@ -70,8 +70,10 @@ export async function createQuoteCheck(req, res) {
   const referenceRecord = dimensional
     ? await PriceRecord.findOne({
         ...query,
-        normalizedPrice: { $gt: 0 },
-        normalizedQuantity: { $gt: 0 },
+        $or: [
+          { analysisUnitPrice: { $gt: 0 }, analysisUnit: "m2" },
+          { normalizedPrice: { $gt: 0 }, normalizedQuantity: { $gt: 0 } },
+        ],
       }).sort({ priceDate: -1, createdAt: -1 })
     : await PriceRecord.findOne(query).sort({ priceDate: -1, createdAt: -1 });
 
@@ -90,7 +92,7 @@ export async function createQuoteCheck(req, res) {
 
   const factors = applicableAdjustments.flatMap((setting) => setting.factors);
   const basePrice = dimensional
-    ? referenceRecord.normalizedPrice
+    ? referenceRecord.analysisUnitPrice || referenceRecord.normalizedPrice
     : referenceRecord.normalizedPrice || referenceRecord.unitPrice || referenceRecord.totalPrice;
   const adjustedPrice = applyAdjustment(basePrice, factors);
 

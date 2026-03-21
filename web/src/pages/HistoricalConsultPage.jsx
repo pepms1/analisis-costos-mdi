@@ -161,6 +161,8 @@ function HistoricalConsultPage() {
           { key: "categoryName", label: "Categoría" },
           { key: "supplierName", label: "Proveedor" },
           { key: "unit", label: "Unidad" },
+          { key: "analysisUnit", label: "Unidad analítica", render: (value) => value || "—" },
+          { key: "analysisUnitPrice", label: "Precio analítico", render: (value) => (value ? formatCurrency(value) : "—") },
           { key: "observations", label: "Observaciones" },
           { key: "createdByName", label: "Capturado por" },
         ]}

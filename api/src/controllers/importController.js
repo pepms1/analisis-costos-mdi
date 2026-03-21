@@ -40,6 +40,7 @@ const MAPPING_CANDIDATES = {
   originalCategory: ["categoria", "categoría", "rubro"],
   observations: ["observaciones", "observación", "notas", "nota"],
 };
+const SURFACE_ANALYSIS_UNITS = new Set(["m2", "m²", "mt2"]);
 
 function serializeSession(session) {
   const id = session.id || session._id?.toString();
@@ -958,8 +959,62 @@ function toNumber(value) {
   return parsed;
 }
 
+function normalizeAnalysisUnit(value) {
+  const normalized = normalizeUnit(value).normalized;
+  if (SURFACE_ANALYSIS_UNITS.has(normalized)) return "m2";
+  return normalized || null;
+}
+
+function getComparableAnalysis({ measurements, fallbackSuggestedUnit, originalPrice }) {
+  if (!measurements) return null;
+  const lengthM = toNumber(measurements.lengthM);
+  const widthM = toNumber(measurements.widthM);
+  const areaM2 = toNumber(measurements.areaM2 ?? (lengthM && widthM ? lengthM * widthM : null));
+  const hasValidGeometry = Boolean(lengthM && widthM && areaM2 && areaM2 > 0);
+  if (!hasValidGeometry) return null;
+
+  const requestedUnit = normalizeAnalysisUnit(measurements.analysisUnit || measurements.applicationUnit || fallbackSuggestedUnit);
+  if (requestedUnit !== "m2") return null;
+
+  const normalizedPrice = toNumber(originalPrice);
+  if (!normalizedPrice || normalizedPrice <= 0) return null;
+
+  return {
+    geometryMeta: {
+      lengthM,
+      widthM,
+      areaM2,
+      sourceUnit: measurements.sourceUnit || null,
+    },
+    analysisUnit: "m2",
+    analysisUnitPrice: Number((normalizedPrice / areaM2).toFixed(6)),
+  };
+}
+
 function buildConceptName(row) {
   return (row.rawConcept || "").trim() || row.rawJson?.normalized?.concept || "Concepto importado";
+}
+
+function getRowComparablePrice(row) {
+  const rowUnitPrice = toSafeNumber(row.rawJson?.normalized?.unitPrice);
+  const areaM2 = toSafeNumber(row.rawJson?.normalized?.detectedDimensions?.areaM2);
+  const suggestedUnit = normalizeAnalysisUnit(row.rawJson?.normalized?.suggestedApplicationUnit);
+  if (!rowUnitPrice || !areaM2 || areaM2 <= 0 || suggestedUnit !== "m2") {
+    return { unit: null, price: rowUnitPrice };
+  }
+
+  return {
+    unit: "m2",
+    price: Number((rowUnitPrice / areaM2).toFixed(6)),
+  };
+}
+
+function getCandidateComparablePrice(priceRecord, preferredUnit) {
+  const candidateUnit = normalizeAnalysisUnit(priceRecord.analysisUnit);
+  if (preferredUnit && candidateUnit === preferredUnit && toSafeNumber(priceRecord.analysisUnitPrice)) {
+    return toSafeNumber(priceRecord.analysisUnitPrice);
+  }
+  return toSafeNumber(priceRecord.unitPrice) || toSafeNumber(priceRecord.normalizedPrice) || toSafeNumber(priceRecord.totalPrice);
 }
 
 async function resolveConceptForApply({ row, category, suggestedHistoric, actorUserId, mongoSession }) {
@@ -1063,7 +1118,7 @@ export async function generateImportSessionSuggestions(req, res) {
 
   const priceRecords = await PriceRecord.find({})
     .sort({ priceDate: -1 })
-    .select("_id conceptId categoryId supplierId projectId priceDate unit unitPrice normalizedPrice totalPrice")
+    .select("_id conceptId categoryId supplierId projectId priceDate unit unitPrice normalizedPrice totalPrice analysisUnit analysisUnitPrice")
     .lean();
 
   const suggestionDocs = [];
@@ -1095,7 +1150,7 @@ export async function generateImportSessionSuggestions(req, res) {
 
     const rowUnit = row.rawJson?.normalized?.unit || row.rawUnit;
     const rowSupplier = row.rawSupplier || detectedSupplierName || "";
-    const rowUnitPrice = row.rawJson?.normalized?.unitPrice;
+    const rowComparable = getRowComparablePrice(row);
     const conceptFromCatalog = conceptNormalizedMap.get(row.normalizedConcept);
 
     const rankedCandidates = priceRecords
@@ -1107,10 +1162,10 @@ export async function generateImportSessionSuggestions(req, res) {
           ? 1
           : getConceptSimilarity(row.normalizedConcept, concept?.normalizedName || "");
 
-        const unitScore = getUnitScore(rowUnit, priceRecord.unit || concept?.primaryUnit || "");
+        const unitScore = getUnitScore(rowComparable.unit || rowUnit, rowComparable.unit || priceRecord.analysisUnit || priceRecord.unit || concept?.primaryUnit || "");
         const supplierScore = getSupplierScore(rowSupplier, supplier?.name || "");
         const recencyScore = getRecencyScore(priceRecord.priceDate);
-        const priceScore = getPriceCoherenceScore(rowUnitPrice, priceRecord.unitPrice || priceRecord.normalizedPrice || priceRecord.totalPrice);
+        const priceScore = getPriceCoherenceScore(rowComparable.price, getCandidateComparablePrice(priceRecord, rowComparable.unit));
 
         const finalScore =
           conceptSimilarity * 0.5 + unitScore * 0.15 + supplierScore * 0.15 + recencyScore * 0.1 + priceScore * 0.1;
@@ -1680,6 +1735,13 @@ export async function applyImportSession(req, res) {
         }
 
         const money = parseMoneyInput(finalCost);
+        const commercialUnit = row.rawJson?.normalized?.unit || row.rawUnit || suggestedHistoric?.unit || concept.primaryUnit || "unidad";
+        const measurements = decision.finalMeasurementsJson || null;
+        const comparable = getComparableAnalysis({
+          measurements,
+          fallbackSuggestedUnit: row.rawJson?.normalized?.suggestedApplicationUnit || null,
+          originalPrice: money.normalizedAmount,
+        });
         const created = await PriceRecord.create(
           [
             {
@@ -1688,7 +1750,7 @@ export async function applyImportSession(req, res) {
               conceptId: concept._id,
               supplierId: finalSupplierId,
               projectId: finalProjectId,
-              unit: row.rawJson?.normalized?.unit || row.rawUnit || suggestedHistoric?.unit || concept.primaryUnit || "unidad",
+              unit: commercialUnit,
               priceDate: finalDate,
               pricingMode: "unit_price",
               originalAmount: money.normalizedAmount,
@@ -1698,9 +1760,14 @@ export async function applyImportSession(req, res) {
               totalPrice: null,
               projectNameSnapshot: project?.name || "",
               observations: decision.finalNotes || row.rawJson?.observations || "",
-              normalizedQuantity: row.rawJson?.normalized?.quantity ?? null,
-              normalizedUnit: row.rawJson?.normalized?.unit || null,
-              normalizedPrice: money.normalizedAmount,
+              normalizedQuantity: comparable?.geometryMeta?.areaM2 || row.rawJson?.normalized?.quantity ?? null,
+              normalizedUnit: comparable?.analysisUnit || row.rawJson?.normalized?.unit || null,
+              normalizedPrice: comparable?.analysisUnitPrice || money.normalizedAmount,
+              geometryMeta: comparable?.geometryMeta || null,
+              commercialUnit,
+              commercialUnitPrice: money.normalizedAmount,
+              analysisUnit: comparable?.analysisUnit || null,
+              analysisUnitPrice: comparable?.analysisUnitPrice || null,
               attributes: {
                 importMeta: {
                   sessionId: session.id,
@@ -1709,6 +1776,7 @@ export async function applyImportSession(req, res) {
                   rowNumber: row.sheetRowNumber,
                   rawValues: row.rawJson?.rowValues || [],
                   finalMeasurements: decision.finalMeasurementsJson || null,
+                  analyticComparable: comparable || null,
                 },
               },
               sourceImportSessionId: session.id,

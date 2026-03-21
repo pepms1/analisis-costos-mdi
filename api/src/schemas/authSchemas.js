@@ -192,6 +192,10 @@ export const saveImportRowDecisionSchema = z.object({
       sourceUnit: z.enum(["mm", "cm", "m"]).nullable().optional(),
       areaM2: z.number().nonnegative().nullable().optional(),
       applicationUnit: z.string().nullable().optional(),
+      commercialUnit: z.string().nullable().optional(),
+      commercialUnitPrice: z.number().nonnegative().nullable().optional(),
+      analysisUnit: z.string().nullable().optional(),
+      analysisUnitPrice: z.number().nonnegative().nullable().optional(),
       rawPattern: z.string().optional(),
       confidence: z.number().min(0).max(1).optional(),
     })
