@@ -8,9 +8,12 @@ import {
   getImportSessionPreview,
   listImportRows,
   listImportSessionSheets,
+  listImportSessions,
   parseImportSessionRows,
+  removeImportSession,
   saveImportRowDecision,
   saveImportSessionMapping,
+  updateImportSessionStatus,
   uploadImportSessionFile,
 } from "../controllers/importController.js";
 import { requirePermission } from "../middlewares/authMiddleware.js";
@@ -19,6 +22,7 @@ import {
   createImportSessionSchema,
   saveImportRowDecisionSchema,
   saveImportSessionMappingSchema,
+  updateImportSessionStatusSchema,
   uploadImportSessionFileSchema,
 } from "../schemas/authSchemas.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -27,6 +31,7 @@ import { PERMISSIONS } from "../utils/permissions.js";
 const router = Router();
 
 router.post("/import-sessions", requirePermission(PERMISSIONS.PRICES_CREATE), validate(createImportSessionSchema), asyncHandler(createImportSession));
+router.get("/import-sessions", requirePermission(PERMISSIONS.PRICES_VIEW), asyncHandler(listImportSessions));
 router.post(
   "/import-sessions/:id/upload",
   requirePermission(PERMISSIONS.PRICES_CREATE),
@@ -53,5 +58,12 @@ router.patch(
 );
 router.post("/import-sessions/:id/decisions/bulk", requirePermission(PERMISSIONS.PRICES_EDIT), asyncHandler(bulkSaveImportRowDecisions));
 router.post("/import-sessions/:id/apply", requirePermission(PERMISSIONS.PRICES_CREATE), asyncHandler(applyImportSession));
+router.patch(
+  "/import-sessions/:id/status",
+  requirePermission(PERMISSIONS.PRICES_EDIT),
+  validate(updateImportSessionStatusSchema),
+  asyncHandler(updateImportSessionStatus)
+);
+router.delete("/import-sessions/:id", requirePermission(PERMISSIONS.PRICES_EDIT), asyncHandler(removeImportSession));
 
 export default router;

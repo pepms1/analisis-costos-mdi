@@ -14,6 +14,7 @@ import ConsultaPage from "./pages/ConsultaPage";
 import QuickCapturePage from "./pages/QuickCapturePage";
 import HistoricalConsultPage from "./pages/HistoricalConsultPage";
 import ExcelImportPage from "./pages/ExcelImportPage";
+import ImportSessionsPage from "./pages/ImportSessionsPage";
 import { PERMISSIONS } from "./utils/permissions";
 
 function App() {
@@ -43,6 +44,14 @@ function App() {
           element={
             <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_QUICK_CAPTURE]}>
               <QuickCapturePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="importacion-excel/sesiones"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_VIEW]}>
+              <ImportSessionsPage />
             </ProtectedRoute>
           }
         />

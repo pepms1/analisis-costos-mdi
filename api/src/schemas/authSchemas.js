@@ -147,7 +147,7 @@ export const createImportSessionSchema = z.object({
   fileType: z.string().optional().default("application/vnd.ms-excel"),
   sourceType: z.string().optional().default("excel"),
   sheetName: z.string().optional().default(""),
-  status: z.enum(["uploaded", "mapped", "parsed", "reviewing", "confirmed", "failed"]).optional(),
+  status: z.enum(["uploaded", "mapped", "parsed", "reviewing", "confirmed", "failed", "discarded", "archived"]).optional(),
   obraId: z.string().nullable().optional(),
   defaultSupplierId: z.string().nullable().optional(),
   defaultCategoryId: z.string().nullable().optional(),
@@ -175,6 +175,12 @@ export const saveImportSessionMappingSchema = z.object({
   detectedDate: z.string().nullable().optional(),
   detectedContextJson: z.record(z.string(), z.any()).nullable().optional(),
   optionsJson: z.record(z.string(), z.any()).optional().default({}),
+});
+
+
+
+export const updateImportSessionStatusSchema = z.object({
+  status: z.enum(["reviewing", "confirmed", "failed", "discarded", "archived"]),
 });
 
 export const saveImportRowDecisionSchema = z.object({

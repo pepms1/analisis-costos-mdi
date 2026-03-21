@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { apiRequest } from "../api/client";
 
@@ -590,6 +591,9 @@ function ExcelImportPage() {
 
       <article className="card import-assistant-card">
         <div className="import-toolbar">
+          <Link className="ghost-button" to="/importacion-excel/sesiones">
+            Ver sesiones/lotes
+          </Link>
           <label className="file-picker" htmlFor="excel-file-input">
             Seleccionar archivo (.xlsx / .xls / .csv)
           </label>
@@ -731,7 +735,7 @@ function ExcelImportPage() {
             type="button"
             className="primary-button"
             onClick={handleApplyToHistoric}
-            disabled={applying || suggesting || parsing || saving || loading || !session?.id}
+            disabled={applying || suggesting || parsing || saving || loading || !session?.id || session?.status === "discarded"}
           >
             {applying ? "Aplicando..." : "Aplicar a históricos"}
           </button>
