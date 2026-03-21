@@ -84,6 +84,22 @@ function ExcelImportPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const supplierById = useMemo(() => {
+    const map = new Map();
+    catalogs.suppliers.forEach((supplier) => {
+      map.set(String(supplier.id), supplier.name);
+    });
+    return map;
+  }, [catalogs.suppliers]);
+
+  const categoryById = useMemo(() => {
+    const map = new Map();
+    catalogs.categories.forEach((category) => {
+      map.set(String(category.id), category.name);
+    });
+    return map;
+  }, [catalogs.categories]);
+
   const previewColumns = useMemo(() => preview?.columns || [], [preview]);
 
   const visibleRows = useMemo(() => {
@@ -117,6 +133,37 @@ function ExcelImportPage() {
 
     loadCatalogs();
   }, []);
+
+  function upsertSessionIdInUrl(sessionId) {
+    if (!sessionId || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("sessionId", sessionId);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function resolveFinalDisplay(row) {
+    const finalValues = row.finalValues || {};
+    const hasDecision = ["accepted", "edited"].includes(row.reviewStatus);
+    const hasSuggestion = Boolean(row.suggestion);
+    const source = hasDecision ? "decision" : hasSuggestion ? "suggestion" : "pending";
+
+    const categoryName =
+      (finalValues.categoryId ? categoryById.get(String(finalValues.categoryId)) : "") ||
+      row.suggestion?.reasonJson?.matched?.categoryName ||
+      "—";
+    const supplierName =
+      (finalValues.supplierId ? supplierById.get(String(finalValues.supplierId)) : "") ||
+      row.suggestion?.reasonJson?.matched?.supplierName ||
+      "—";
+
+    return {
+      source,
+      categoryName,
+      supplierName,
+      cost: finalValues.cost ?? "—",
+      notes: finalValues.notes || "sin notas",
+    };
+  }
 
   async function loadPreview(sessionId, sheetName) {
     if (!sessionId || !sheetName) {
@@ -175,6 +222,7 @@ function ExcelImportPage() {
       });
 
       const sessionId = created.item.id;
+      upsertSessionIdInUrl(sessionId);
 
       const uploaded = await apiRequest(`/import-sessions/${sessionId}/upload`, {
         method: "POST",
@@ -312,6 +360,7 @@ function ExcelImportPage() {
         body: JSON.stringify(payload),
       });
       await loadParsedRows(session?.id);
+      setSuccess("Decisión guardada y tabla actualizada.");
     } catch (decisionError) {
       setError(decisionError.message || "No se pudo guardar la decisión");
     }
@@ -333,6 +382,13 @@ function ExcelImportPage() {
       });
       setSelectedRows({});
       await loadParsedRows(session.id);
+      const messageByAction = {
+        accept: "Filas aceptadas correctamente.",
+        ignore: "Filas ignoradas correctamente.",
+        set_supplier: "Proveedor final asignado correctamente.",
+        set_category: "Categoría final asignada correctamente.",
+      };
+      setSuccess(messageByAction[action] || "Acción masiva aplicada correctamente.");
     } catch (bulkError) {
       setError(bulkError.message || "No se pudo ejecutar la acción masiva");
     }
@@ -430,6 +486,54 @@ function ExcelImportPage() {
       </span>
     );
   }
+
+  useEffect(() => {
+    async function rehydrateSessionFromUrl() {
+      if (typeof window === "undefined") return;
+      const sessionId = new URL(window.location.href).searchParams.get("sessionId");
+      if (!sessionId) return;
+
+      setLoading(true);
+      setError("");
+      try {
+        const [sessionResponse, sheetsResponse] = await Promise.all([
+          apiRequest(`/import-sessions/${sessionId}`),
+          apiRequest(`/import-sessions/${sessionId}/sheets`),
+        ]);
+
+        const loadedSession = sessionResponse.item || null;
+        setSession(loadedSession);
+        setSelectedFileName(loadedSession?.fileName || "");
+        setSheets(sheetsResponse.items || []);
+        setColumnMapping(loadedSession?.columnMappingJson || {});
+
+        const currentSheet = loadedSession?.sheetName || sheetsResponse.items?.[0]?.name || "";
+        setSelectedSheet(currentSheet);
+
+        if (loadedSession?.optionsJson?.headerRowIndex) {
+          setHeaderRowIndex(loadedSession.optionsJson.headerRowIndex);
+        }
+        if (loadedSession?.optionsJson?.dataStartRowIndex) {
+          setDataStartRowIndex(loadedSession.optionsJson.dataStartRowIndex);
+        }
+        if (typeof loadedSession?.optionsJson?.ignoreEmptyRows === "boolean") {
+          setIgnoreEmptyRows(loadedSession.optionsJson.ignoreEmptyRows);
+        }
+
+        if (currentSheet) {
+          await loadPreview(sessionId, currentSheet);
+        }
+        await loadParsedRows(sessionId);
+        setSuccess(`Sesión ${sessionId} rehidratada correctamente.`);
+      } catch (rehydrateError) {
+        setError(rehydrateError.message || "No se pudo recuperar la sesión desde la URL");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    rehydrateSessionFromUrl();
+  }, []);
 
   return (
     <section className="page-shell">
@@ -667,7 +771,9 @@ function ExcelImportPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((row) => (
+                {visibleRows.map((row) => {
+                  const finalDisplay = resolveFinalDisplay(row);
+                  return (
                   <tr key={row.id}>
                     <td>
                       <input type="checkbox" checked={Boolean(selectedRows[row.id])} onChange={(event) => setSelectedRows((prev) => ({ ...prev, [row.id]: event.target.checked }))} />
@@ -693,7 +799,15 @@ function ExcelImportPage() {
                     </td>
                     <td>{renderConfidence(row)}</td>
                     <td>{renderStatusBadge(row.reviewStatus)}</td>
-                    <td className="cell-wrap">{row.finalValues?.cost ?? "—"} · {row.finalValues?.notes || "sin notas"}</td>
+                    <td className="cell-wrap">
+                      <strong>Proveedor final:</strong> {finalDisplay.supplierName}
+                      <br />
+                      <strong>Categoría final:</strong> {finalDisplay.categoryName}
+                      <br />
+                      <strong>Costo/notas:</strong> {finalDisplay.cost} · {finalDisplay.notes}
+                      <br />
+                      <span className="muted">Fuente: {finalDisplay.source}</span>
+                    </td>
                     <td className="row-actions">
                       <button
                         type="button"
@@ -707,7 +821,8 @@ function ExcelImportPage() {
                       <button type="button" onClick={() => applyDecision(row.id, { decisionType: "new" })}>Volver pendiente</button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {!visibleRows.length ? <p className="muted">No hay filas para este filtro.</p> : null}
