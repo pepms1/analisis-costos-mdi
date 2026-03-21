@@ -9,9 +9,9 @@ function classifyQuote(adjustedPrice, quote) {
   if (!adjustedPrice || !quote) return null;
   const differencePercent = ((quote - adjustedPrice) / adjustedPrice) * 100;
 
-  if (differencePercent > 12) return { label: "Alto", tone: "high", differencePercent };
-  if (differencePercent < -12) return { label: "Bajo", tone: "low", differencePercent };
-  return { label: "Lógico", tone: "ok", differencePercent };
+  if (differencePercent > 12) return { label: "Arriba de rango", tone: "high", differencePercent };
+  if (differencePercent < -12) return { label: "Abajo de rango", tone: "low", differencePercent };
+  return { label: "Dentro de rango", tone: "ok", differencePercent };
 }
 
 function toMeters(value, unit = "m") {
@@ -44,6 +44,37 @@ function isDimensionalConcept(concept) {
     isAreaAnalysisUnit(concept?.analysisUnit) ||
     isAreaAnalysisUnit(concept?.applicationUnit)
   );
+}
+
+function toPositiveNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
+}
+
+function resolveRecordAreaM2(item) {
+  const normalizedQuantity = toPositiveNumber(item?.normalizedQuantity);
+  if (normalizedQuantity) return normalizedQuantity;
+
+  const geometryArea = toPositiveNumber(item?.geometryMeta?.areaM2);
+  if (geometryArea) return geometryArea;
+
+  const measurementUnit = item?.dimensions?.measurementUnit || "m";
+  const largo = toMeters(item?.dimensions?.largo ?? item?.dimensions?.length, measurementUnit);
+  const ancho = toMeters(item?.dimensions?.ancho ?? item?.dimensions?.height ?? item?.dimensions?.width, measurementUnit);
+  return largo && ancho ? largo * ancho : null;
+}
+
+function resolveHistoricalPricePerM2(item) {
+  const analysisUnitPrice = toPositiveNumber(item?.analysisUnitPrice);
+  if (isAreaAnalysisUnit(item?.analysisUnit) && analysisUnitPrice) return analysisUnitPrice;
+
+  const areaM2 = resolveRecordAreaM2(item);
+  if (!areaM2) return null;
+
+  const totalPrice = toPositiveNumber(item?.totalPrice) || toPositiveNumber(item?.amount);
+  if (!totalPrice) return null;
+
+  return totalPrice / areaM2;
 }
 
 function normalizeTargetArea(concept, measureInputs) {
@@ -142,12 +173,25 @@ function ConsultaPage() {
   const latestRecord = pricingSummary.latestRecord;
   const firstRecord = pricingSummary.oldestRecord;
 
+  const recordsWithDerivedMetrics = useMemo(
+    () =>
+      recordsWithAdjusted.map((item) => {
+        const areaM2 = resolveRecordAreaM2(item);
+        return {
+          ...item,
+          resolvedAreaM2: areaM2,
+          historicalPricePerM2: resolveHistoricalPricePerM2(item),
+        };
+      }),
+    [recordsWithAdjusted]
+  );
+
   const dimensionalReferenceRecord = useMemo(
     () =>
-      recordsWithAdjusted.find(
-        (item) => Number(item.normalizedPrice) > 0 && Number(item.normalizedQuantity) > 0
+      recordsWithDerivedMetrics.find(
+        (item) => Number(item.historicalPricePerM2) > 0 && Number(item.resolvedAreaM2) > 0
       ) || null,
-    [recordsWithAdjusted]
+    [recordsWithDerivedMetrics]
   );
 
   const baseRecord = requiresDimensions ? dimensionalReferenceRecord : latestRecord;
@@ -155,8 +199,8 @@ function ConsultaPage() {
   const targetMeasure = useMemo(() => normalizeTargetArea(selectedConcept, measureInputs), [selectedConcept, measureInputs]);
 
   const normalizedPricingSummary = useMemo(
-    () => calculateAdjustedPrice(records, inflationByYear, { amountField: "normalizedPrice" }),
-    [records, inflationByYear]
+    () => calculateAdjustedPrice(recordsWithDerivedMetrics, inflationByYear, { amountField: "historicalPricePerM2" }),
+    [recordsWithDerivedMetrics, inflationByYear]
   );
   const adjustedNormalizedPrice = normalizedPricingSummary.adjustedAverage;
   const quotedTotalPrice = Number(todayQuote);
@@ -316,13 +360,13 @@ function ConsultaPage() {
             { key: "adjustedAmount", label: "Precio ajustado", render: (value) => formatCurrency(value) },
             { key: "dimensions", label: "Medida base", render: (value) => formatDimensions(value) },
             {
-              key: "normalizedQuantity",
+              key: "resolvedAreaM2",
               label: "Área base",
               render: (value) => (value ? `${value.toFixed(3)} m2` : "—"),
             },
-            { key: "normalizedPrice", label: "Precio por m²", render: (value) => formatCurrency(value) },
+            { key: "historicalPricePerM2", label: "Precio por m²", render: (value) => formatCurrency(value) },
           ]}
-          rows={recordsWithAdjusted}
+          rows={recordsWithDerivedMetrics}
           emptyLabel="Selecciona un concepto para ver su histórico"
         />
 
@@ -331,7 +375,7 @@ function ConsultaPage() {
           {requiresDimensions ? (
             <div className="details-block">
               <p className="muted">Medida histórica base: {formatDimensions(baseRecord?.dimensions)}</p>
-              <p className="muted">Área histórica base: {baseRecord?.normalizedQuantity ? `${baseRecord.normalizedQuantity.toFixed(3)} m2` : "—"}</p>
+              <p className="muted">Área histórica base: {baseRecord?.resolvedAreaM2 ? `${baseRecord.resolvedAreaM2.toFixed(3)} m2` : "—"}</p>
               <p className="muted">Base de comparación usada: Precio ajustado por m²</p>
               <p className="muted">Referencia ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
             </div>
@@ -387,7 +431,7 @@ function ConsultaPage() {
           )}
 
           <div className={`alert ${quoteEvaluation?.tone === "high" || quoteEvaluation?.tone === "low" ? "error" : ""}`}>
-            <strong>Resultado:</strong> {quoteEvaluation?.label || "Captura un precio para evaluar"}
+            <strong>Conclusión:</strong> {quoteEvaluation?.label || "Captura medidas y precio para evaluar"}
             <p className="muted">Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}</p>
             <p className="muted">
               Base de comparación: {formatCurrency(comparisonBase)} {requiresDimensions ? "por m²" : "(total)"}
