@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Logo Análisis Costos GMDI">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#2c86bb" />
+      <stop offset="60%" stop-color="#114275" />
+      <stop offset="100%" stop-color="#0a2a55" />
+    </radialGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a6f5d8" />
+      <stop offset="100%" stop-color="#64d9b4" />
+    </linearGradient>
+  </defs>
+
+  <circle cx="512" cy="512" r="488" fill="#ffffff" />
+  <circle cx="512" cy="512" r="460" fill="#0f3e72" />
+  <circle cx="512" cy="512" r="430" fill="url(#bg)" />
+
+  <path d="M170 260a350 350 0 0 1 684 0l-86 0a264 264 0 0 0-512 0z" fill="#fff" />
+  <text x="512" y="220" text-anchor="middle" font-size="76" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="#072d62">ANÁLISIS COSTOS GMDI</text>
+
+  <circle cx="440" cy="530" r="220" fill="#1d4f85" stroke="#fff" stroke-width="22" />
+  <rect x="318" y="560" width="58" height="100" rx="8" fill="url(#bar)" />
+  <rect x="400" y="520" width="58" height="140" rx="8" fill="url(#bar)" />
+  <rect x="482" y="470" width="58" height="190" rx="8" fill="url(#bar)" />
+  <rect x="564" y="420" width="58" height="240" rx="8" fill="url(#bar)" />
+
+  <polyline points="300,560 390,470 470,500 640,355" fill="none" stroke="#9bf0d0" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <polygon points="640,355 600,370 620,408" fill="#9bf0d0"/>
+
+  <text x="710" y="585" text-anchor="middle" font-size="300" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="#ffffff" stroke="#123f73" stroke-width="10">$</text>
+</svg>
