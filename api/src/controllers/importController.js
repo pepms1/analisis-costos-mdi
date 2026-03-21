@@ -1097,6 +1097,43 @@ function getComparableAnalysis({ measurements, fallbackSuggestedUnit, originalPr
   };
 }
 
+function buildGeometryForHistoric(measurements, comparable) {
+  const lengthM = toNumber(measurements?.lengthM ?? comparable?.geometryMeta?.lengthM);
+  const widthM = toNumber(measurements?.widthM ?? comparable?.geometryMeta?.widthM);
+  const areaM2 = toNumber(measurements?.areaM2 ?? comparable?.geometryMeta?.areaM2 ?? (lengthM && widthM ? lengthM * widthM : null));
+  const hasDimensions = Boolean(lengthM && widthM && lengthM > 0 && widthM > 0);
+
+  if (!hasDimensions) {
+    return {
+      dimensions: null,
+      derivedValues: null,
+      geometryMeta: comparable?.geometryMeta || null,
+      normalizedQuantityFromGeometry: areaM2 && areaM2 > 0 ? areaM2 : null,
+    };
+  }
+
+  return {
+    dimensions: {
+      length: lengthM,
+      width: widthM,
+      largo: lengthM,
+      ancho: widthM,
+      measurementUnit: "m",
+    },
+    derivedValues: {
+      largoM: lengthM,
+      anchoM: widthM,
+    },
+    geometryMeta: {
+      lengthM,
+      widthM,
+      areaM2: areaM2 && areaM2 > 0 ? areaM2 : Number((lengthM * widthM).toFixed(6)),
+      sourceUnit: measurements?.sourceUnit || comparable?.geometryMeta?.sourceUnit || null,
+    },
+    normalizedQuantityFromGeometry: areaM2 && areaM2 > 0 ? areaM2 : Number((lengthM * widthM).toFixed(6)),
+  };
+}
+
 function buildConceptName(row) {
   return (row.rawConcept || "").trim() || row.rawJson?.normalized?.concept || "Concepto importado";
 }
@@ -1870,6 +1907,7 @@ export async function applyImportSession(req, res) {
           fallbackSuggestedUnit: row.rawJson?.normalized?.suggestedApplicationUnit || null,
           originalPrice: money.normalizedAmount,
         });
+        const geometry = buildGeometryForHistoric(measurements, comparable);
         const created = await PriceRecord.create(
           [
             {
@@ -1886,12 +1924,14 @@ export async function applyImportSession(req, res) {
               capturedAmount: money.normalizedString,
               unitPrice: money.normalizedAmount,
               totalPrice: null,
+              dimensions: geometry.dimensions,
+              derivedValues: geometry.derivedValues,
               projectNameSnapshot: project?.name || "",
               observations: decision.finalNotes || row.rawJson?.observations || "",
-              normalizedQuantity: comparable?.geometryMeta?.areaM2 ?? row.rawJson?.normalized?.quantity ?? null,
+              normalizedQuantity: geometry.normalizedQuantityFromGeometry ?? row.rawJson?.normalized?.quantity ?? null,
               normalizedUnit: comparable?.analysisUnit || row.rawJson?.normalized?.unit || null,
               normalizedPrice: comparable?.analysisUnitPrice || money.normalizedAmount,
-              geometryMeta: comparable?.geometryMeta || null,
+              geometryMeta: geometry.geometryMeta,
               commercialUnit,
               commercialUnitPrice: money.normalizedAmount,
               analysisUnit: comparable?.analysisUnit || null,
