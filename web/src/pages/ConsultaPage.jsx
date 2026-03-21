@@ -24,8 +24,26 @@ function getMeasurementUnit(concept) {
   return concept?.dimensionSchema?.inputUnit || "cm";
 }
 
+function normalizeAnalysisUnit(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s/g, "")
+    .replace("²", "2");
+}
+
+function isAreaAnalysisUnit(value) {
+  const normalized = normalizeAnalysisUnit(value);
+  return ["m2", "mt2", "sqm", "m^2"].includes(normalized);
+}
+
 function isDimensionalConcept(concept) {
-  return concept?.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(concept?.calculationType);
+  return (
+    concept?.requiresDimensions ||
+    ["area_based", "linear_based", "height_based"].includes(concept?.calculationType) ||
+    isAreaAnalysisUnit(concept?.analysisUnit) ||
+    isAreaAnalysisUnit(concept?.applicationUnit)
+  );
 }
 
 function normalizeTargetArea(concept, measureInputs) {
@@ -103,7 +121,18 @@ function ConsultaPage() {
     () => concepts.find((concept) => concept.id === filters.conceptId) || null,
     [concepts, filters.conceptId]
   );
-  const requiresDimensions = Boolean(selectedConcept && isDimensionalConcept(selectedConcept));
+  const hasAreaReference = useMemo(
+    () =>
+      records.some(
+        (item) =>
+          isAreaAnalysisUnit(item?.analysisUnit) ||
+          isAreaAnalysisUnit(item?.normalizedUnit) ||
+          (Number(item?.normalizedPrice) > 0 && Number(item?.normalizedQuantity) > 0)
+      ),
+    [records]
+  );
+
+  const requiresDimensions = Boolean(selectedConcept && (isDimensionalConcept(selectedConcept) || hasAreaReference));
 
   const pricingSummary = useMemo(
     () => calculateAdjustedPrice(records, inflationByYear),
@@ -130,6 +159,11 @@ function ConsultaPage() {
     [records, inflationByYear]
   );
   const adjustedNormalizedPrice = normalizedPricingSummary.adjustedAverage;
+  const quotedTotalPrice = Number(todayQuote);
+  const quotedPricePerM2 =
+    requiresDimensions && targetMeasure?.quantity && quotedTotalPrice > 0
+      ? quotedTotalPrice / targetMeasure.quantity
+      : null;
 
   const estimatedComparablePrice =
     requiresDimensions
@@ -138,7 +172,9 @@ function ConsultaPage() {
         : null
       : adjustedHeadlinePrice;
 
-  const quoteEvaluation = classifyQuote(estimatedComparablePrice, Number(todayQuote));
+  const comparisonBase = requiresDimensions ? adjustedNormalizedPrice : estimatedComparablePrice;
+  const comparableQuote = requiresDimensions ? quotedPricePerM2 : quotedTotalPrice;
+  const quoteEvaluation = classifyQuote(comparisonBase, comparableQuote);
   const inflationLabel = inflationYears.length
     ? `Actualizado al último índice disponible (${pricingSummary.targetYear})`
     : "Sin inflación configurada";
@@ -296,26 +332,69 @@ function ConsultaPage() {
             <div className="details-block">
               <p className="muted">Medida histórica base: {formatDimensions(baseRecord?.dimensions)}</p>
               <p className="muted">Área histórica base: {baseRecord?.normalizedQuantity ? `${baseRecord.normalizedQuantity.toFixed(3)} m2` : "—"}</p>
-              <p className="muted">Medida nueva: Largo {measureInputs.largo || "—"} · Ancho {measureInputs.ancho || "—"}</p>
-              <p className="muted">Área nueva: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
-              <p className="muted">Base ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
+              <p className="muted">Base de comparación usada: Precio ajustado por m²</p>
+              <p className="muted">Referencia ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
             </div>
           ) : null}
-          <label className="field">
-            <span>Precio cotizado hoy</span>
-            <input
-              type="number"
-              step="0.01"
-              value={todayQuote}
-              onChange={(event) => setTodayQuote(event.target.value)}
-              placeholder="0.00"
-            />
-          </label>
+          {requiresDimensions ? (
+            <>
+              <div className="subgrid">
+                <label className="field">
+                  <span>Largo cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={measureInputs.largo}
+                    onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
+                    placeholder="0.00"
+                  />
+                </label>
+                <label className="field">
+                  <span>Ancho cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={measureInputs.ancho}
+                    onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
+                    placeholder="0.00"
+                  />
+                </label>
+              </div>
+              <p className="muted">Área capturada: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
+              <label className="field">
+                <span>Precio cotizado hoy (total)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={todayQuote}
+                  onChange={(event) => setTodayQuote(event.target.value)}
+                  placeholder="0.00"
+                />
+              </label>
+              <p className="muted">Precio cotizado por m² (calculado): {quotedPricePerM2 ? formatCurrency(quotedPricePerM2) : "—"}</p>
+            </>
+          ) : (
+            <label className="field">
+              <span>Precio cotizado hoy</span>
+              <input
+                type="number"
+                step="0.01"
+                value={todayQuote}
+                onChange={(event) => setTodayQuote(event.target.value)}
+                placeholder="0.00"
+              />
+            </label>
+          )}
 
           <div className={`alert ${quoteEvaluation?.tone === "high" || quoteEvaluation?.tone === "low" ? "error" : ""}`}>
             <strong>Resultado:</strong> {quoteEvaluation?.label || "Captura un precio para evaluar"}
             <p className="muted">Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}</p>
-            <p className="muted">Base de comparación: {formatCurrency(estimatedComparablePrice)}</p>
+            <p className="muted">
+              Base de comparación: {formatCurrency(comparisonBase)} {requiresDimensions ? "por m²" : "(total)"}
+            </p>
+            {requiresDimensions ? (
+              <p className="muted">Comparativo total estimado para el área capturada: {formatCurrency(estimatedComparablePrice)}</p>
+            ) : null}
           </div>
         </div>
       </div>
