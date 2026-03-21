@@ -1,5 +1,6 @@
 import { Category } from "../models/Category.js";
 import { Concept } from "../models/Concept.js";
+import { ImportRowDecision } from "../models/ImportRowDecision.js";
 import { PriceRecord } from "../models/PriceRecord.js";
 import { Project } from "../models/Project.js";
 import { Supplier } from "../models/Supplier.js";
@@ -256,6 +257,22 @@ export async function deletePriceRecord(req, res) {
 
   if (!item) {
     throw new AppError("Price record not found", 404);
+  }
+
+  const hasImportTraceability =
+    item.captureOrigin === "excel_import" && item.sourceImportSessionId && item.sourceImportRowId;
+  if (hasImportTraceability) {
+    await ImportRowDecision.updateOne(
+      {
+        importRowId: item.sourceImportRowId,
+        savedHistoricId: item._id,
+      },
+      {
+        $set: {
+          savedHistoricId: null,
+        },
+      }
+    );
   }
 
   res.status(204).send();
