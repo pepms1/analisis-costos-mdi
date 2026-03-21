@@ -38,7 +38,7 @@ async function resolveSearchFilters(search) {
 }
 
 export async function listPriceRecords(req, res) {
-  const query = {};
+  const query = { isDeleted: { $ne: true } };
   const shouldPopulate = req.query.populate !== "0";
 
   if (req.query.conceptId) query.conceptId = req.query.conceptId;
@@ -232,7 +232,22 @@ export async function updatePriceRecord(req, res) {
 }
 
 export async function deletePriceRecord(req, res) {
-  const item = await PriceRecord.findByIdAndDelete(req.params.id);
+  if (req.user?.role !== "superadmin") {
+    throw new AppError("Only superadmin can delete historical records", 403);
+  }
+
+  const item = await PriceRecord.findOneAndUpdate(
+    { _id: req.params.id, isDeleted: { $ne: true } },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: req.user.id,
+        updatedBy: req.user.id,
+      },
+    },
+    { new: true }
+  );
 
   if (!item) {
     throw new AppError("Price record not found", 404);

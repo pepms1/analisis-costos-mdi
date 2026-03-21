@@ -2,11 +2,38 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
+import { useAuth } from "../contexts/AuthContext";
 import { formatCurrency, formatDate } from "../utils/formatters";
 
 const PAGE_SIZE = 25;
 
+function formatMeasurement(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  return Number(value).toFixed(2);
+}
+
+function extractGeometry(row) {
+  const largo =
+    row?.derivedValues?.largoM ?? row?.dimensions?.largo ?? row?.dimensions?.length ?? row?.dimensions?.width ?? null;
+  const ancho = row?.derivedValues?.anchoM ?? row?.dimensions?.ancho ?? row?.dimensions?.height ?? null;
+  const measurementUnit = row?.derivedValues?.largoM || row?.derivedValues?.anchoM ? "m" : row?.dimensions?.measurementUnit || "m";
+  const largoText = formatMeasurement(largo);
+  const anchoText = formatMeasurement(ancho);
+
+  if (!largoText || !anchoText) return "—";
+
+  const area = typeof row?.normalizedQuantity === "number" ? Number(row.normalizedQuantity).toFixed(2) : null;
+
+  return (
+    <div className="historical-geometry-cell">
+      <strong>{`${largoText} × ${anchoText} ${measurementUnit}`}</strong>
+      <span className="muted">{area ? `Área ${area} m²` : "Área —"}</span>
+    </div>
+  );
+}
+
 function HistoricalConsultPage() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);
@@ -14,6 +41,7 @@ function HistoricalConsultPage() {
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, totalItems: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [filters, setFilters] = useState({
     supplierId: "",
     categoryId: "",
@@ -38,29 +66,7 @@ function HistoricalConsultPage() {
   }, []);
 
   useEffect(() => {
-    const query = new URLSearchParams();
-    if (filters.supplierId) query.set("supplierId", filters.supplierId);
-    if (filters.categoryId) query.set("categoryId", filters.categoryId);
-    if (filters.conceptId) query.set("conceptId", filters.conceptId);
-    if (filters.search.trim()) query.set("search", filters.search.trim());
-    query.set("sort", filters.sort);
-    query.set("page", String(filters.page));
-    query.set("limit", String(PAGE_SIZE));
-
-    setLoading(true);
-    setError("");
-
-    apiRequest(`/price-records?${query.toString()}`)
-      .then((data) => {
-        setItems(data.items || []);
-        setPagination(data.pagination || { page: 1, limit: PAGE_SIZE, totalItems: data.items?.length || 0, totalPages: 1 });
-      })
-      .catch((requestError) => {
-        setItems([]);
-        setPagination({ page: 1, limit: PAGE_SIZE, totalItems: 0, totalPages: 1 });
-        setError(requestError.message || "No se pudieron consultar los históricos.");
-      })
-      .finally(() => setLoading(false));
+    fetchHistoricalRecords(filters);
   }, [filters]);
 
   const filteredConcepts = useMemo(() => {
@@ -82,6 +88,52 @@ function HistoricalConsultPage() {
 
   function goToPage(nextPage) {
     setFilters((prev) => ({ ...prev, page: nextPage }));
+  }
+
+  const canDeleteHistorical = user?.role === "superadmin";
+
+  async function fetchHistoricalRecords(activeFilters) {
+    const query = new URLSearchParams();
+    if (activeFilters.supplierId) query.set("supplierId", activeFilters.supplierId);
+    if (activeFilters.categoryId) query.set("categoryId", activeFilters.categoryId);
+    if (activeFilters.conceptId) query.set("conceptId", activeFilters.conceptId);
+    if (activeFilters.search.trim()) query.set("search", activeFilters.search.trim());
+    query.set("sort", activeFilters.sort);
+    query.set("page", String(activeFilters.page));
+    query.set("limit", String(PAGE_SIZE));
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await apiRequest(`/price-records?${query.toString()}`);
+      setItems(data.items || []);
+      setPagination(data.pagination || { page: 1, limit: PAGE_SIZE, totalItems: data.items?.length || 0, totalPages: 1 });
+    } catch (requestError) {
+      setItems([]);
+      setPagination({ page: 1, limit: PAGE_SIZE, totalItems: 0, totalPages: 1 });
+      setError(requestError.message || "No se pudieron consultar los históricos.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDelete(item) {
+    const confirmed = window.confirm(
+      `Vas a eliminar el histórico del ${formatDate(item.priceDate)}. Esta acción afecta la consulta de históricos. ¿Deseas continuar?`
+    );
+
+    if (!confirmed) return;
+
+    setError("");
+    setSuccessMessage("");
+    try {
+      await apiRequest(`/price-records/${item.id}`, { method: "DELETE" });
+      setSuccessMessage("Histórico eliminado correctamente.");
+      await fetchHistoricalRecords(filters);
+    } catch (deleteError) {
+      setError(deleteError.message || "No se pudo eliminar el histórico.");
+    }
   }
 
   return (
@@ -151,6 +203,7 @@ function HistoricalConsultPage() {
           <strong>Error:</strong> {error}
         </div>
       ) : null}
+      {successMessage ? <div className="alert">{successMessage}</div> : null}
 
       <DataTable
         columns={[
@@ -160,9 +213,25 @@ function HistoricalConsultPage() {
           { key: "conceptName", label: "Concepto" },
           { key: "categoryName", label: "Categoría" },
           { key: "supplierName", label: "Proveedor" },
+          { key: "geometry", label: "Geometría", render: (_value, row) => extractGeometry(row) },
+          { key: "normalizedUnit", label: "Unidad análisis", render: (value) => value || "—" },
+          { key: "normalizedPrice", label: "P.U. análisis", render: (value) => (typeof value === "number" ? formatCurrency(value) : "—") },
           { key: "unit", label: "Unidad" },
           { key: "observations", label: "Observaciones" },
           { key: "createdByName", label: "Capturado por" },
+          ...(canDeleteHistorical
+            ? [
+                {
+                  key: "actions",
+                  label: "Acciones",
+                  render: (_value, row) => (
+                    <button type="button" className="ghost-button danger-button" onClick={() => handleDelete(row)}>
+                      Eliminar histórico
+                    </button>
+                  ),
+                },
+              ]
+            : []),
         ]}
         rows={items}
         emptyLabel={loading ? "Cargando históricos..." : "No hay históricos para estos filtros"}
