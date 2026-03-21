@@ -1007,6 +1007,37 @@ th {
   color: #3f3f46;
 }
 
+.status-chip-reviewing,
+.status-chip-mapped,
+.status-chip-uploaded,
+.status-chip-parsed {
+  background: rgba(62, 89, 158, 0.15);
+  color: #3e599e;
+}
+
+.status-chip-confirmed {
+  background: rgba(33, 110, 57, 0.15);
+  color: #216e39;
+}
+
+.status-chip-failed,
+.status-chip-discarded {
+  background: rgba(178, 58, 72, 0.14);
+  color: #b23a48;
+}
+
+.status-chip-archived {
+  background: rgba(113, 113, 122, 0.15);
+  color: #3f3f46;
+}
+
+.session-search {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-width: 240px;
+}
+
 .cell-wrap {
   white-space: normal;
   min-width: 220px;

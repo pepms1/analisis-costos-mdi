@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export const IMPORT_SESSION_STATUSES = ["uploaded", "mapped", "parsed", "reviewing", "confirmed", "failed"];
+export const IMPORT_SESSION_STATUSES = ["uploaded", "mapped", "parsed", "reviewing", "confirmed", "failed", "discarded", "archived"];
 
 const importSessionSchema = new mongoose.Schema(
   {

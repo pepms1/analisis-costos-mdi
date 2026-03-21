@@ -381,6 +381,96 @@ export async function getImportSession(req, res) {
   res.json({ item: serializeSession(session) });
 }
 
+export async function listImportSessions(req, res) {
+  const statusFilter = String(req.query.status || "all");
+  const search = String(req.query.search || "").trim();
+
+  const query = {};
+  if (statusFilter && statusFilter !== "all") {
+    query.status = statusFilter;
+  }
+  if (search) {
+    query.fileName = { $regex: search, $options: "i" };
+  }
+
+  const sessions = await ImportSession.find(query)
+    .populate("createdBy", "name email")
+    .populate("detectedSupplierId", "name")
+    .populate("detectedWorkId", "name")
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const sessionIds = sessions.map((item) => item._id);
+
+  const [rowStats, decisionStats] = await Promise.all([
+    ImportRow.aggregate([
+      { $match: { sessionId: { $in: sessionIds } } },
+      {
+        $group: {
+          _id: "$sessionId",
+          totalRows: { $sum: 1 },
+          parseErrors: {
+            $sum: {
+              $cond: [{ $eq: ["$parseStatus", "error"] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
+    ImportRowDecision.aggregate([
+      {
+        $lookup: {
+          from: "importrows",
+          localField: "importRowId",
+          foreignField: "_id",
+          as: "row",
+        },
+      },
+      { $unwind: "$row" },
+      { $match: { "row.sessionId": { $in: sessionIds } } },
+      {
+        $group: {
+          _id: "$row.sessionId",
+          accepted: { $sum: { $cond: [{ $eq: ["$decisionType", "accepted"] }, 1, 0] } },
+          edited: { $sum: { $cond: [{ $eq: ["$decisionType", "edited"] }, 1, 0] } },
+          ignored: { $sum: { $cond: [{ $eq: ["$decisionType", "ignored"] }, 1, 0] } },
+          applied: { $sum: { $cond: [{ $ne: ["$savedHistoricId", null] }, 1, 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const rowBySession = new Map(rowStats.map((item) => [String(item._id), item]));
+  const decisionsBySession = new Map(decisionStats.map((item) => [String(item._id), item]));
+
+  const items = sessions.map((session) => {
+    const rowCounters = rowBySession.get(String(session._id)) || { totalRows: 0, parseErrors: 0 };
+    const decisionCounters = decisionsBySession.get(String(session._id)) || {
+      accepted: 0,
+      edited: 0,
+      ignored: 0,
+      applied: 0,
+    };
+    return {
+      ...serializeSession(session),
+      createdByName: session.createdBy?.name || "—",
+      createdByEmail: session.createdBy?.email || "",
+      detectedSupplierName: session.detectedSupplierId?.name || "",
+      detectedWorkName: session.detectedWorkId?.name || "",
+      counters: {
+        totalRows: rowCounters.totalRows || 0,
+        accepted: decisionCounters.accepted || 0,
+        edited: decisionCounters.edited || 0,
+        ignored: decisionCounters.ignored || 0,
+        applied: decisionCounters.applied || 0,
+        errors: rowCounters.parseErrors || 0,
+      },
+    };
+  });
+
+  res.json({ items });
+}
+
 export async function listImportSessionSheets(req, res) {
   const session = await ImportSession.findById(req.params.id);
 
@@ -1757,4 +1847,41 @@ export async function applyImportSession(req, res) {
     summary,
     item: serializeSession(session),
   });
+}
+
+export async function updateImportSessionStatus(req, res) {
+  const session = await ImportSession.findById(req.params.id);
+  if (!session) {
+    throw new AppError("Import session not found", 404);
+  }
+
+  const { status } = req.validatedBody;
+  session.status = status;
+  session.optionsJson = {
+    ...(session.optionsJson || {}),
+    statusUpdatedAt: new Date().toISOString(),
+    statusUpdatedBy: req.user.id,
+  };
+  await session.save();
+
+  res.json({ item: serializeSession(session) });
+}
+
+export async function removeImportSession(req, res) {
+  const session = await ImportSession.findById(req.params.id).select("_id");
+  if (!session) {
+    throw new AppError("Import session not found", 404);
+  }
+
+  const rows = await ImportRow.find({ sessionId: session.id }).select("_id").lean();
+  const rowIds = rows.map((item) => item._id);
+
+  await Promise.all([
+    ImportRowSuggestion.deleteMany({ importRowId: { $in: rowIds } }),
+    ImportRowDecision.deleteMany({ importRowId: { $in: rowIds } }),
+    ImportRow.deleteMany({ sessionId: session.id }),
+    ImportSession.deleteOne({ _id: session.id }),
+  ]);
+
+  res.status(204).send();
 }
