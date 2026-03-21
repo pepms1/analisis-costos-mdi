@@ -1888,7 +1888,7 @@ export async function applyImportSession(req, res) {
               totalPrice: null,
               projectNameSnapshot: project?.name || "",
               observations: decision.finalNotes || row.rawJson?.observations || "",
-              normalizedQuantity: comparable?.geometryMeta?.areaM2 || row.rawJson?.normalized?.quantity ?? null,
+              normalizedQuantity: comparable?.geometryMeta?.areaM2 ?? row.rawJson?.normalized?.quantity ?? null,
               normalizedUnit: comparable?.analysisUnit || row.rawJson?.normalized?.unit || null,
               normalizedPrice: comparable?.analysisUnitPrice || money.normalizedAmount,
               geometryMeta: comparable?.geometryMeta || null,
