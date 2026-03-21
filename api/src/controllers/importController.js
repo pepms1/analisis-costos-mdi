@@ -840,6 +840,25 @@ function normalizeDecisionType(value = "") {
   return mapping[String(value).toLowerCase()] || "new";
 }
 
+function normalizeObjectIdInput(value) {
+  if (!value) return null;
+  if (value instanceof mongoose.Types.ObjectId) return value;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return mongoose.Types.ObjectId.isValid(trimmed) ? trimmed : null;
+  }
+
+  if (typeof value === "object") {
+    const candidate = value.value ?? value.id ?? value._id ?? null;
+    if (!candidate) return null;
+    return normalizeObjectIdInput(candidate);
+  }
+
+  return null;
+}
+
 function serializeDecision(decision) {
   if (!decision) return null;
   return {
@@ -1369,6 +1388,8 @@ export async function bulkSaveImportRowDecisions(req, res) {
   }
 
   const { action, rowIds = [], categoryId = null, supplierId = null } = req.body || {};
+  const normalizedCategoryId = normalizeObjectIdInput(categoryId);
+  const normalizedSupplierId = normalizeObjectIdInput(supplierId);
   if (!Array.isArray(rowIds) || !rowIds.length) {
     throw new AppError("Debes enviar al menos una fila para acción masiva", 400);
   }
@@ -1383,6 +1404,12 @@ export async function bulkSaveImportRowDecisions(req, res) {
   if (action === "ignore") decisionType = "ignored";
   if (!["accept", "ignore", "set_supplier", "set_category"].includes(action)) {
     throw new AppError("Acción masiva no soportada", 400);
+  }
+  if (action === "set_category" && !normalizedCategoryId) {
+    throw new AppError("Categoría masiva inválida", 400);
+  }
+  if (action === "set_supplier" && !normalizedSupplierId) {
+    throw new AppError("Proveedor masivo inválido", 400);
   }
 
   const results = [];
@@ -1399,11 +1426,11 @@ export async function bulkSaveImportRowDecisions(req, res) {
     };
 
     if (action === "set_supplier") {
-      payload.finalSupplierId = supplierId;
+      payload.finalSupplierId = normalizedSupplierId;
       payload.decisionType = "edited";
     }
     if (action === "set_category") {
-      payload.finalCategoryId = categoryId;
+      payload.finalCategoryId = normalizedCategoryId;
       payload.decisionType = "edited";
     }
 
@@ -1426,6 +1453,7 @@ async function upsertRowDecision({ rowId, payload, userId }) {
 
   const normalizedDecisionType = normalizeDecisionType(payload.decisionType);
   const suggestion = await ImportRowSuggestion.findOne({ importRowId: row.id }).lean();
+  const currentDecision = await ImportRowDecision.findOne({ importRowId: row.id }).lean();
 
   if (normalizedDecisionType === "accepted" && row.parseStatus === "error") {
     throw new AppError("Las filas con error de parseo no se pueden aceptar. Puedes ignorarlas o editarlas.", 400);
@@ -1441,22 +1469,31 @@ async function upsertRowDecision({ rowId, payload, userId }) {
   const decisionPayload = {
     importRowId: row.id,
     decisionType: normalizedDecisionType,
-    finalCategoryId: payload.finalCategoryId ?? null,
-    finalSupplierId: payload.finalSupplierId ?? null,
+    finalCategoryId: normalizeObjectIdInput(payload.finalCategoryId),
+    finalSupplierId: normalizeObjectIdInput(payload.finalSupplierId),
     finalCost: payload.finalCost ?? null,
     finalDate: payload.finalDate ? new Date(payload.finalDate) : null,
-    finalWorkId: payload.finalWorkId ?? null,
-    finalNotes: payload.finalNotes || "",
+    finalWorkId: normalizeObjectIdInput(payload.finalWorkId),
+    finalNotes: payload.finalNotes || currentDecision?.finalNotes || "",
     finalMeasurementsJson: payload.finalMeasurementsJson ?? null,
     createdBy: userId,
   };
 
+  if (currentDecision) {
+    decisionPayload.finalCategoryId = decisionPayload.finalCategoryId || currentDecision.finalCategoryId || null;
+    decisionPayload.finalSupplierId = decisionPayload.finalSupplierId || currentDecision.finalSupplierId || null;
+    decisionPayload.finalCost = decisionPayload.finalCost ?? currentDecision.finalCost ?? null;
+    decisionPayload.finalDate = decisionPayload.finalDate || currentDecision.finalDate || null;
+    decisionPayload.finalWorkId = decisionPayload.finalWorkId || currentDecision.finalWorkId || null;
+    decisionPayload.finalMeasurementsJson = decisionPayload.finalMeasurementsJson ?? currentDecision.finalMeasurementsJson ?? null;
+  }
+
   if (normalizedDecisionType === "accepted") {
-    decisionPayload.finalCategoryId = suggestion?.suggestedCategoryId || decisionPayload.finalCategoryId;
-    decisionPayload.finalSupplierId = suggestion?.suggestedSupplierId || decisionPayload.finalSupplierId;
+    decisionPayload.finalCategoryId = normalizeObjectIdInput(suggestion?.suggestedCategoryId) || decisionPayload.finalCategoryId;
+    decisionPayload.finalSupplierId = normalizeObjectIdInput(suggestion?.suggestedSupplierId) || decisionPayload.finalSupplierId;
     decisionPayload.finalCost = suggestion?.suggestedCost ?? row.rawJson?.normalized?.unitPrice ?? decisionPayload.finalCost;
     decisionPayload.finalDate = suggestion?.suggestedDate || decisionPayload.finalDate;
-    decisionPayload.finalWorkId = suggestion?.suggestedWorkId || decisionPayload.finalWorkId;
+    decisionPayload.finalWorkId = normalizeObjectIdInput(suggestion?.suggestedWorkId) || decisionPayload.finalWorkId;
     if (!decisionPayload.finalMeasurementsJson && row.rawJson?.normalized?.detectedDimensions) {
       decisionPayload.finalMeasurementsJson = {
         ...row.rawJson.normalized.detectedDimensions,
@@ -1503,7 +1540,14 @@ export async function applyImportSession(req, res) {
     .select("importRowId suggestedHistoricId")
     .lean();
   const suggestionByRowId = new Map(suggestionRows.map((item) => [String(item.importRowId), item]));
-  const categoryIds = [...new Set(scopedDecisions.map((item) => item.finalCategoryId).filter(Boolean).map(String))];
+  const categoryIds = [
+    ...new Set(
+      scopedDecisions
+        .map((item) => normalizeObjectIdInput(item.finalCategoryId))
+        .filter(Boolean)
+        .map(String)
+    ),
+  ];
   const categoryDocs = await Category.find({ _id: { $in: categoryIds } }).select("_id mainType").lean();
   const categoryById = new Map(categoryDocs.map((item) => [String(item._id), item]));
   const projectIds = [...new Set(scopedDecisions.map((item) => item.finalWorkId).filter(Boolean).map(String))];
@@ -1547,18 +1591,35 @@ export async function applyImportSession(req, res) {
           continue;
         }
 
-        const finalCategoryId = decision.finalCategoryId || null;
+        const finalCategoryId = normalizeObjectIdInput(decision.finalCategoryId);
         const finalCost = toNumber(decision.finalCost);
         const inferredDateFromYear = session.detectedYear ? getContextDateFromYear(session.detectedYear) : null;
         const finalDate = toSafeDate(
           decision.finalDate || row.rawJson?.normalized?.dateIso || session.detectedDate || session.defaultDate || inferredDateFromYear
         );
-        const finalSupplierId = decision.finalSupplierId || session.detectedSupplierId || session.defaultSupplierId || null;
-        const finalProjectId = decision.finalWorkId || session.detectedWorkId || session.obraId || null;
+        const finalSupplierId =
+          normalizeObjectIdInput(decision.finalSupplierId) ||
+          normalizeObjectIdInput(session.detectedSupplierId) ||
+          normalizeObjectIdInput(session.defaultSupplierId) ||
+          null;
+        const finalProjectId =
+          normalizeObjectIdInput(decision.finalWorkId) ||
+          normalizeObjectIdInput(session.detectedWorkId) ||
+          normalizeObjectIdInput(session.obraId) ||
+          null;
 
         if (!finalCategoryId || !categoryById.get(String(finalCategoryId))) {
           summary.errors += 1;
-          summary.errorRows.push({ importRowId: row._id, sheetRowNumber: row.sheetRowNumber, reason: "Categoría final inválida" });
+          summary.errorRows.push({
+            importRowId: row._id,
+            sheetRowNumber: row.sheetRowNumber,
+            reason: "Categoría final inválida",
+            debug: {
+              finalCategoryId: decision.finalCategoryId ?? null,
+              normalizedFinalCategoryId: finalCategoryId ?? null,
+              categoryFound: Boolean(finalCategoryId && categoryById.get(String(finalCategoryId))),
+            },
+          });
           continue;
         }
         if (finalCost === null || finalCost <= 0) {
