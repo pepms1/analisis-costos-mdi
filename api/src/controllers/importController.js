@@ -1064,10 +1064,16 @@ function getComparableAnalysis({ measurements, fallbackSuggestedUnit, originalPr
   if (!hasValidGeometry) return null;
 
   const requestedUnit = normalizeAnalysisUnit(measurements.analysisUnit || measurements.applicationUnit || fallbackSuggestedUnit);
-  if (requestedUnit !== "m2") return null;
-
   const normalizedPrice = toNumber(originalPrice);
-  if (!normalizedPrice || normalizedPrice <= 0) return null;
+  const providedAnalysisUnitPrice = toNumber(measurements.analysisUnitPrice);
+  const canComputeAnalysisPrice = Boolean(normalizedPrice && normalizedPrice > 0);
+  const analysisUnit = requestedUnit === "m2" ? "m2" : null;
+  const analysisUnitPrice =
+    analysisUnit && providedAnalysisUnitPrice && providedAnalysisUnitPrice > 0
+      ? providedAnalysisUnitPrice
+      : analysisUnit && canComputeAnalysisPrice
+        ? Number((normalizedPrice / areaM2).toFixed(6))
+        : null;
 
   return {
     geometryMeta: {
@@ -1076,8 +1082,20 @@ function getComparableAnalysis({ measurements, fallbackSuggestedUnit, originalPr
       areaM2,
       sourceUnit: measurements.sourceUnit || null,
     },
-    analysisUnit: "m2",
-    analysisUnitPrice: Number((normalizedPrice / areaM2).toFixed(6)),
+    dimensions: {
+      largo: lengthM,
+      ancho: widthM,
+      measurementUnit: "m",
+    },
+    derivedValues: {
+      largoM: lengthM,
+      anchoM: widthM,
+    },
+    normalizedQuantity: areaM2,
+    normalizedUnit: analysisUnit || null,
+    normalizedPrice: analysisUnitPrice || null,
+    analysisUnit,
+    analysisUnitPrice,
   };
 }
 
@@ -1825,8 +1843,14 @@ export async function applyImportSession(req, res) {
         }
 
         const money = parseMoneyInput(finalCost);
-        const commercialUnit = row.rawJson?.normalized?.unit || row.rawUnit || suggestedHistoric?.unit || concept.primaryUnit || "unidad";
         const measurements = decision.finalMeasurementsJson || null;
+        const commercialUnit =
+          measurements?.commercialUnit ||
+          row.rawJson?.normalized?.unit ||
+          row.rawUnit ||
+          suggestedHistoric?.unit ||
+          concept.primaryUnit ||
+          "unidad";
         const comparable = getComparableAnalysis({
           measurements,
           fallbackSuggestedUnit: row.rawJson?.normalized?.suggestedApplicationUnit || null,
@@ -1850,14 +1874,16 @@ export async function applyImportSession(req, res) {
               totalPrice: null,
               projectNameSnapshot: project?.name || "",
               observations: decision.finalNotes || row.rawJson?.observations || "",
-              normalizedQuantity: comparable?.geometryMeta?.areaM2 || row.rawJson?.normalized?.quantity ?? null,
-              normalizedUnit: comparable?.analysisUnit || row.rawJson?.normalized?.unit || null,
-              normalizedPrice: comparable?.analysisUnitPrice || money.normalizedAmount,
+              dimensions: comparable?.dimensions || null,
+              derivedValues: comparable?.derivedValues || null,
+              normalizedQuantity: comparable?.normalizedQuantity ?? row.rawJson?.normalized?.quantity ?? null,
+              normalizedUnit: comparable?.normalizedUnit ?? row.rawJson?.normalized?.unit ?? null,
+              normalizedPrice: comparable?.normalizedPrice ?? money.normalizedAmount,
               geometryMeta: comparable?.geometryMeta || null,
               commercialUnit,
               commercialUnitPrice: money.normalizedAmount,
-              analysisUnit: comparable?.analysisUnit || null,
-              analysisUnitPrice: comparable?.analysisUnitPrice || null,
+              analysisUnit: comparable?.analysisUnit ?? normalizeAnalysisUnit(measurements?.analysisUnit || measurements?.applicationUnit) ?? null,
+              analysisUnitPrice: comparable?.analysisUnitPrice ?? toNumber(measurements?.analysisUnitPrice) ?? null,
               attributes: {
                 importMeta: {
                   sessionId: session.id,
