@@ -15,6 +15,7 @@ import QuickCapturePage from "./pages/QuickCapturePage";
 import HistoricalConsultPage from "./pages/HistoricalConsultPage";
 import ExcelImportPage from "./pages/ExcelImportPage";
 import ImportSessionsPage from "./pages/ImportSessionsPage";
+import HistoricalAdminCatalogPage from "./pages/HistoricalAdminCatalogPage";
 import { PERMISSIONS } from "./utils/permissions";
 
 function App() {
@@ -99,6 +100,14 @@ function App() {
         <Route path="concepts" element={<ConceptsPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="projects" element={<ProjectsPage />} />
+        <Route
+          path="catalogos/historicos"
+          element={
+            <ProtectedRoute permissionsAll={[PERMISSIONS.CATALOGS_VIEW]}>
+              <HistoricalAdminCatalogPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

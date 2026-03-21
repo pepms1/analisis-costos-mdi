@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
-import { useAuth } from "../contexts/AuthContext";
 import { formatCurrency, formatDate } from "../utils/formatters";
 
 const PAGE_SIZE = 25;
@@ -33,7 +32,6 @@ function extractGeometry(row) {
 }
 
 function HistoricalConsultPage() {
-  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);
@@ -41,7 +39,6 @@ function HistoricalConsultPage() {
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, totalItems: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [filters, setFilters] = useState({
     supplierId: "",
     categoryId: "",
@@ -90,7 +87,6 @@ function HistoricalConsultPage() {
     setFilters((prev) => ({ ...prev, page: nextPage }));
   }
 
-  const canDeleteHistorical = user?.role === "superadmin";
 
   async function fetchHistoricalRecords(activeFilters) {
     const query = new URLSearchParams();
@@ -118,23 +114,6 @@ function HistoricalConsultPage() {
     }
   }
 
-  async function handleDelete(item) {
-    const confirmed = window.confirm(
-      `Vas a eliminar el histórico del ${formatDate(item.priceDate)}. Esta acción afecta la consulta de históricos. ¿Deseas continuar?`
-    );
-
-    if (!confirmed) return;
-
-    setError("");
-    setSuccessMessage("");
-    try {
-      await apiRequest(`/price-records/${item.id}`, { method: "DELETE" });
-      setSuccessMessage("Histórico eliminado correctamente.");
-      await fetchHistoricalRecords(filters);
-    } catch (deleteError) {
-      setError(deleteError.message || "No se pudo eliminar el histórico.");
-    }
-  }
 
   return (
     <section className="page-shell">
@@ -203,7 +182,6 @@ function HistoricalConsultPage() {
           <strong>Error:</strong> {error}
         </div>
       ) : null}
-      {successMessage ? <div className="alert">{successMessage}</div> : null}
 
       <DataTable
         columns={[
@@ -221,19 +199,6 @@ function HistoricalConsultPage() {
           { key: "analysisUnitPrice", label: "Precio analítico", render: (value) => (value ? formatCurrency(value) : "—") },
           { key: "observations", label: "Observaciones" },
           { key: "createdByName", label: "Capturado por" },
-          ...(canDeleteHistorical
-            ? [
-                {
-                  key: "actions",
-                  label: "Acciones",
-                  render: (_value, row) => (
-                    <button type="button" className="ghost-button danger-button" onClick={() => handleDelete(row)}>
-                      Eliminar histórico
-                    </button>
-                  ),
-                },
-              ]
-            : []),
         ]}
         rows={items}
         emptyLabel={loading ? "Cargando históricos..." : "No hay históricos para estos filtros"}
