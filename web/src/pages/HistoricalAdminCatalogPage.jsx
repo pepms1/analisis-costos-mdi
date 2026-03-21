@@ -25,6 +25,9 @@ const initialForm = {
   largo: "",
   ancho: "",
   measurementUnit: "cm",
+  commercialUnit: "",
+  commercialUnitPrice: "",
+  analysisUnit: "",
 };
 
 function formatMeasurement(value) {
@@ -113,6 +116,39 @@ function HistoricalAdminCatalogPage() {
     selectedConcept &&
       (selectedConcept.requiresDimensions || ["area_based", "linear_based", "height_based"].includes(selectedConcept.calculationType))
   );
+  const hasExistingGeometry = Boolean(
+    editingRecord?.geometryMeta?.areaM2 ||
+      editingRecord?.derivedValues?.largoM ||
+      editingRecord?.derivedValues?.anchoM ||
+      editingRecord?.dimensions?.largo ||
+      editingRecord?.dimensions?.ancho ||
+      editingRecord?.dimensions?.length ||
+      editingRecord?.dimensions?.height ||
+      editingRecord?.dimensions?.width
+  );
+  const shouldShowGeometryBlock = requiresDimensions || hasExistingGeometry || (form.analysisUnit || "").trim().toLowerCase() === "m2";
+  const parsedLargo = Number(form.largo);
+  const parsedAncho = Number(form.ancho);
+  const areaM2 =
+    Number.isFinite(parsedLargo) &&
+    parsedLargo > 0 &&
+    Number.isFinite(parsedAncho) &&
+    parsedAncho > 0
+      ? (form.measurementUnit === "cm" ? parsedLargo / 100 : parsedLargo) * (form.measurementUnit === "cm" ? parsedAncho / 100 : parsedAncho)
+      : null;
+  const normalizedAmount = Number(normalizeMoneyDraft(form.amount || "0"));
+  const totalPricePreview =
+    Number.isFinite(normalizedAmount) && normalizedAmount > 0
+      ? effectivePricingMode === "total_price"
+        ? normalizedAmount
+        : areaM2
+          ? normalizedAmount * areaM2
+          : null
+      : null;
+  const analysisUnitPricePreview =
+    (form.analysisUnit || "").trim().toLowerCase() === "m2" && areaM2 && totalPricePreview
+      ? totalPricePreview / areaM2
+      : null;
 
   useEffect(() => {
     if (!filters.categoryId) return;
@@ -172,6 +208,9 @@ function HistoricalAdminCatalogPage() {
       largo: row.dimensions?.largo || row.dimensions?.length || row.dimensions?.width || "",
       ancho: row.dimensions?.ancho || row.dimensions?.height || "",
       measurementUnit: row.dimensions?.measurementUnit || "cm",
+      commercialUnit: row.commercialUnit || row.unit || "",
+      commercialUnitPrice: row.commercialUnitPrice ? normalizeMoneyDraft(String(row.commercialUnitPrice)) : "",
+      analysisUnit: row.analysisUnit || row.normalizedUnit || "",
     });
     setSuccessMessage("");
     setError("");
@@ -200,8 +239,21 @@ function HistoricalAdminCatalogPage() {
       amount: normalizeMoneyDraft(form.amount),
       location: form.location,
       observations: form.observations,
+      commercialUnit: form.commercialUnit || form.unit || null,
+      commercialUnitPrice: form.commercialUnitPrice ? Number(normalizeMoneyDraft(form.commercialUnitPrice)) : null,
+      analysisUnit: form.analysisUnit || null,
+      analysisUnitPrice: analysisUnitPricePreview ? Number(analysisUnitPricePreview.toFixed(6)) : null,
+      geometryMeta:
+        shouldShowGeometryBlock && areaM2
+          ? {
+              lengthM: form.measurementUnit === "cm" ? parsedLargo / 100 : parsedLargo,
+              widthM: form.measurementUnit === "cm" ? parsedAncho / 100 : parsedAncho,
+              areaM2,
+              sourceUnit: form.measurementUnit,
+            }
+          : null,
       dimensions:
-        requiresDimensions && (form.largo || form.ancho)
+        shouldShowGeometryBlock && (form.largo || form.ancho)
           ? {
               measurementUnit: form.measurementUnit,
               largo: form.largo ? Number(form.largo) : undefined,
@@ -366,6 +418,10 @@ function HistoricalAdminCatalogPage() {
             <span>Unidad comercial</span>
             <input value={form.unit} onChange={(e) => setForm((prev) => ({ ...prev, unit: e.target.value }))} required />
           </label>
+          <label className="field">
+            <span>Unidad comercial original</span>
+            <input value={form.commercialUnit} onChange={(e) => setForm((prev) => ({ ...prev, commercialUnit: e.target.value }))} />
+          </label>
           {!isLaborMainType ? (
             <label className="field">
               <span>Modo de precio</span>
@@ -386,8 +442,16 @@ function HistoricalAdminCatalogPage() {
               required
             />
           </label>
-          {requiresDimensions ? (
+          <label className="field">
+            <span>Precio histórico total</span>
+            <input value={totalPricePreview ? normalizeMoneyDraft(String(totalPricePreview)) : "—"} readOnly />
+          </label>
+          {shouldShowGeometryBlock ? (
             <>
+              <div className="card">
+                <h4>Geometría y análisis</h4>
+                <p className="muted">Actualiza largo/ancho para recalcular área y precio analítico normalizado.</p>
+              </div>
               <div className="subgrid">
                 <label className="field">
                   <span>Largo</span>
@@ -405,8 +469,30 @@ function HistoricalAdminCatalogPage() {
                   <option value="m">m</option>
                 </select>
               </label>
+              <label className="field">
+                <span>Área calculada (m²)</span>
+                <input value={areaM2 ? areaM2.toFixed(4) : "—"} readOnly />
+              </label>
+              <label className="field">
+                <span>Unidad analítica</span>
+                <input value={form.analysisUnit} onChange={(e) => setForm((prev) => ({ ...prev, analysisUnit: e.target.value }))} placeholder="m2" />
+              </label>
+              <label className="field">
+                <span>Precio analítico normalizado</span>
+                <input value={analysisUnitPricePreview ? normalizeMoneyDraft(String(analysisUnitPricePreview)) : "—"} readOnly />
+              </label>
             </>
           ) : null}
+          <label className="field">
+            <span>Precio unidad comercial original</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.commercialUnitPrice}
+              onChange={(e) => setForm((prev) => ({ ...prev, commercialUnitPrice: e.target.value }))}
+              onBlur={(e) => setForm((prev) => ({ ...prev, commercialUnitPrice: normalizeMoneyDraft(e.target.value) }))}
+            />
+          </label>
           <label className="field">
             <span>Notas / metadata</span>
             <textarea value={form.observations} onChange={(e) => setForm((prev) => ({ ...prev, observations: e.target.value }))} rows="3" />
