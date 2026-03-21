@@ -186,6 +186,27 @@ function ExcelImportPage() {
     };
   }
 
+  function resolveAnalyticPreview(row, draft = null) {
+    const measurements = draft || row.decision?.finalMeasurementsJson || row.finalValues?.measurements || null;
+    const originalUnit = row.rawUnit || row.rawJson?.normalized?.unit || "pieza";
+    const originalPrice =
+      draft?.commercialUnitPrice ??
+      row.decision?.finalCost ??
+      row.finalValues?.cost ??
+      row.rawJson?.normalized?.unitPrice ??
+      null;
+    const lengthM = Number(measurements?.lengthM);
+    const widthM = Number(measurements?.widthM);
+    const areaM2 = Number(measurements?.areaM2 ?? (Number.isFinite(lengthM) && Number.isFinite(widthM) ? lengthM * widthM : NaN));
+    const analysisUnit = (measurements?.analysisUnit || measurements?.applicationUnit || "").toLowerCase() === "m2" ? "m2" : null;
+    const analysisUnitPrice =
+      analysisUnit && Number.isFinite(areaM2) && areaM2 > 0 && Number.isFinite(Number(originalPrice)) && Number(originalPrice) > 0
+        ? Number((Number(originalPrice) / areaM2).toFixed(6))
+        : null;
+
+    return { originalUnit, originalPrice, lengthM, widthM, areaM2, analysisUnit, analysisUnitPrice };
+  }
+
   async function loadPreview(sessionId, sheetName) {
     if (!sessionId || !sheetName) {
       return;
@@ -491,6 +512,11 @@ function ExcelImportPage() {
 
   async function saveEditDecision() {
     if (!editingRow) return;
+    const analyticPreview = resolveAnalyticPreview(editingRow, {
+      ...editForm,
+      analysisUnit: editForm.applicationUnit || null,
+      commercialUnitPrice: editForm.finalCost === "" ? null : Number(editForm.finalCost),
+    });
     await applyDecision(editingRow.id, {
       decisionType: "edited",
       finalCategoryId: editForm.finalCategoryId || null,
@@ -508,6 +534,10 @@ function ExcelImportPage() {
               sourceUnit: editForm.sourceUnit || null,
               areaM2: editForm.areaM2 === "" ? Number(editForm.lengthM) * Number(editForm.widthM) : Number(editForm.areaM2),
               applicationUnit: editForm.applicationUnit || null,
+              commercialUnit: analyticPreview.originalUnit || null,
+              commercialUnitPrice: analyticPreview.originalPrice ?? null,
+              analysisUnit: analyticPreview.analysisUnit || null,
+              analysisUnitPrice: analyticPreview.analysisUnitPrice ?? null,
             },
     });
     setEditingRow(null);
@@ -873,6 +903,7 @@ function ExcelImportPage() {
               <tbody>
                 {visibleRows.map((row) => {
                   const finalDisplay = resolveFinalDisplay(row);
+                  const analytic = resolveAnalyticPreview(row);
                   return (
                   <tr key={row.id}>
                     <td>
@@ -894,6 +925,10 @@ function ExcelImportPage() {
                           {row.rawJson.normalized.detectedDimensions.areaM2}m²
                           {" · sugerida: "}
                           {row.rawJson?.normalized?.suggestedApplicationUnit || "—"}
+                          <br />
+                          <strong>Comercial:</strong> {analytic.originalUnit} · {analytic.originalPrice ?? "—"}
+                          <br />
+                          <strong>Analítica:</strong> {analytic.analysisUnit || "—"} · {analytic.analysisUnitPrice ?? "—"}
                         </>
                       ) : "—"}
                     </td>
@@ -997,10 +1032,26 @@ function ExcelImportPage() {
                 <input type="number" step="0.000001" value={editForm.areaM2} onChange={(event) => setEditForm((prev) => ({ ...prev, areaM2: event.target.value }))} />
               </label>
               <label>
-                Unidad sugerida de aplicación
+                Unidad analítica comparable
                 <input value={editForm.applicationUnit} onChange={(event) => setEditForm((prev) => ({ ...prev, applicationUnit: event.target.value }))} placeholder="m2 / pieza / ml..." />
               </label>
             </div>
+            {(() => {
+              const preview = resolveAnalyticPreview(editingRow, {
+                ...editForm,
+                analysisUnit: editForm.applicationUnit || null,
+                commercialUnitPrice: editForm.finalCost === "" ? null : Number(editForm.finalCost),
+              });
+              return (
+                <div className="card-subtle">
+                  <p><strong>Unidad comercial original:</strong> {preview.originalUnit}</p>
+                  <p><strong>Precio comercial original:</strong> {preview.originalPrice ?? "—"}</p>
+                  <p><strong>Geometría final:</strong> {Number.isFinite(preview.lengthM) && Number.isFinite(preview.widthM) ? `${preview.lengthM}m × ${preview.widthM}m = ${preview.areaM2}m²` : "—"}</p>
+                  <p><strong>Unidad analítica comparable:</strong> {preview.analysisUnit || "—"}</p>
+                  <p><strong>Precio analítico normalizado:</strong> {preview.analysisUnitPrice ?? "—"}</p>
+                </div>
+              );
+            })()}
             <div className="button-row">
               <button type="button" className="primary-button" onClick={saveEditDecision}>Guardar edición</button>
               <button type="button" onClick={() => setEditingRow(null)}>Cancelar</button>
