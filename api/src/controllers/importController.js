@@ -430,12 +430,28 @@ export async function listImportSessions(req, res) {
       { $unwind: "$row" },
       { $match: { "row.sessionId": { $in: sessionIds } } },
       {
+        $lookup: {
+          from: "pricerecords",
+          let: { savedHistoricId: "$savedHistoricId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$savedHistoricId"] },
+                isDeleted: { $ne: true },
+              },
+            },
+            { $project: { _id: 1 } },
+          ],
+          as: "activeSavedHistoric",
+        },
+      },
+      {
         $group: {
           _id: "$row.sessionId",
           accepted: { $sum: { $cond: [{ $eq: ["$decisionType", "accepted"] }, 1, 0] } },
           edited: { $sum: { $cond: [{ $eq: ["$decisionType", "edited"] }, 1, 0] } },
           ignored: { $sum: { $cond: [{ $eq: ["$decisionType", "ignored"] }, 1, 0] } },
-          applied: { $sum: { $cond: [{ $ne: ["$savedHistoricId", null] }, 1, 0] } },
+          applied: { $sum: { $cond: [{ $gt: [{ $size: "$activeSavedHistoric" }, 0] }, 1, 0] } },
         },
       },
     ]),
@@ -1685,6 +1701,18 @@ export async function applyImportSession(req, res) {
     .select("importRowId suggestedHistoricId")
     .lean();
   const suggestionByRowId = new Map(suggestionRows.map((item) => [String(item.importRowId), item]));
+  const savedHistoricIds = [
+    ...new Set(
+      scopedDecisions
+        .map((item) => normalizeObjectIdInput(item.savedHistoricId))
+        .filter(Boolean)
+        .map(String)
+    ),
+  ];
+  const activeSavedHistoricRecords = savedHistoricIds.length
+    ? await PriceRecord.find({ _id: { $in: savedHistoricIds }, isDeleted: { $ne: true } }).select("_id").lean()
+    : [];
+  const activeSavedHistoricIds = new Set(activeSavedHistoricRecords.map((item) => String(item._id)));
   const categoryIds = [
     ...new Set(
       scopedDecisions
@@ -1729,11 +1757,21 @@ export async function applyImportSession(req, res) {
         }
         summary.eligible += 1;
 
-        if (decision.savedHistoricId) {
+        const normalizedSavedHistoricId = normalizeObjectIdInput(decision.savedHistoricId);
+        const hasActiveSavedHistoric = normalizedSavedHistoricId && activeSavedHistoricIds.has(String(normalizedSavedHistoricId));
+
+        if (hasActiveSavedHistoric) {
           summary.alreadyApplied += 1;
           summary.omitted += 1;
-          summary.createdIds.push(String(decision.savedHistoricId));
+          summary.createdIds.push(String(normalizedSavedHistoricId));
           continue;
+        }
+        if (normalizedSavedHistoricId && !hasActiveSavedHistoric) {
+          await ImportRowDecision.updateOne(
+            { _id: decision._id },
+            { $set: { savedHistoricId: null } },
+            { session: mongoSession }
+          );
         }
 
         const finalCategoryId = normalizeObjectIdInput(decision.finalCategoryId);
