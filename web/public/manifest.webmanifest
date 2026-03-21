@@ -1,0 +1,17 @@
+{
+  "name": "Análisis de Costos GMDI",
+  "short_name": "Costos GMDI",
+  "description": "Aplicación web para análisis de costos.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a2a55",
+  "theme_color": "#0f3e72",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
