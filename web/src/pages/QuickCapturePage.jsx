@@ -7,6 +7,7 @@ import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
 const initialForm = {
   conceptId: "",
+  unit: "",
   supplierId: "",
   projectId: "",
   priceDate: new Date().toISOString().slice(0, 10),
@@ -46,6 +47,7 @@ function QuickCapturePage() {
   }, []);
 
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === form.conceptId), [concepts, form.conceptId]);
+  const conceptBaseUnit = (selectedConcept?.primaryUnit || "").trim();
   const isLaborConcept = selectedConcept?.mainType === "labor";
   const effectivePricingMode = isLaborConcept ? LABOR_PRICING_MODE : form.pricingMode;
   const requiresDimensions = Boolean(
@@ -58,6 +60,13 @@ function QuickCapturePage() {
       setForm((prev) => ({ ...prev, pricingMode: LABOR_PRICING_MODE }));
     }
   }, [isLaborConcept, form.pricingMode]);
+
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      unit: conceptBaseUnit || "",
+    }));
+  }, [conceptBaseUnit, form.conceptId]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -76,6 +85,10 @@ function QuickCapturePage() {
       setStatus({ error: "Precio inválido. Usa un número positivo con máximo 2 decimales.", success: "" });
       return;
     }
+    if (!form.unit.trim()) {
+      setStatus({ error: "La unidad es obligatoria. Selecciona un concepto con unidad o captura una manualmente.", success: "" });
+      return;
+    }
 
     try {
       await apiRequest("/price-records", {
@@ -87,7 +100,7 @@ function QuickCapturePage() {
           conceptId: form.conceptId,
           supplierId: form.supplierId || null,
           projectId: form.projectId || null,
-          unit: selectedConcept.primaryUnit || "pieza",
+          unit: form.unit.trim(),
           priceDate: form.priceDate,
           pricingMode: effectivePricingMode,
           amount: normalizeMoneyDraft(form.amount),
@@ -183,6 +196,18 @@ function QuickCapturePage() {
             </label>
           )}
         </div>
+
+        <label className="field">
+          <span>Unidad</span>
+          <input
+            value={form.unit}
+            onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))}
+            placeholder={conceptBaseUnit ? "" : "Ej. m2, pieza, litro"}
+            readOnly={Boolean(conceptBaseUnit)}
+            required
+          />
+          {!conceptBaseUnit ? <small className="muted">Este concepto no tiene unidad base; captúrala para guardar.</small> : null}
+        </label>
 
         <div className="subgrid">
           <label className="field">

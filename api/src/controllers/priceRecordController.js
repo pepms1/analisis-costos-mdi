@@ -207,6 +207,10 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
   } = validatedBody;
 
   const { cents: originalAmountCents, normalizedAmount, normalizedString } = parseMoneyInput(amount);
+  const resolvedUnit = (unit || concept.primaryUnit || "").trim();
+  if (!resolvedUnit) {
+    throw new AppError("La unidad es obligatoria para guardar el precio.", 400);
+  }
 
   const pricingPayload = buildPricingPayload({
     calculationType: concept.calculationType,
@@ -234,11 +238,12 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     supplierId: supplierId || null,
     projectId: projectId || null,
     projectNameSnapshot: project?.name || "",
+    unit: resolvedUnit,
     dimensions,
     pricingMode: resolvePricingMode(mainType, pricingMode),
     attributes: attributes || {},
     geometryMeta: computedGeometryMeta,
-    commercialUnit: commercialUnit || unit || null,
+    commercialUnit: commercialUnit || resolvedUnit || null,
     commercialUnitPrice: commercialUnitPrice ?? pricingPayload.totalPrice ?? null,
     analysisUnit: analysisUnitNormalized,
     analysisUnitPrice: analysisUnitPrice ?? computedAnalysisUnitPrice,
