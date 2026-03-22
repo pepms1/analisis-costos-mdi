@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, formatPercent } from "../utils/formatters";
 import { calculateAdjustedPrice, parseInflationByYear } from "../utils/priceAdjustments";
 
 function classifyQuote(adjustedPrice, quote) {
-  if (!adjustedPrice || !quote) return null;
+  if (!Number.isFinite(adjustedPrice) || adjustedPrice <= 0 || !Number.isFinite(quote) || quote <= 0) return null;
   const differencePercent = ((quote - adjustedPrice) / adjustedPrice) * 100;
 
   if (differencePercent > 12) return { label: "Arriba de rango", tone: "high", differencePercent };
@@ -100,7 +100,9 @@ function normalizeTargetArea(concept, measureInputs) {
   const largo = toMeters(measureInputs.largo, unit);
   const ancho = toMeters(measureInputs.ancho, unit);
   if (!largo || !ancho) return null;
-  return { quantity: largo * ancho, normalizedUnit: "m2" };
+  const quantity = largo * ancho;
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  return { quantity, normalizedUnit: "m2" };
 }
 
 function formatDimensions(dimensions) {
@@ -221,19 +223,29 @@ function ConsultaPage() {
   );
   const adjustedNormalizedPrice = normalizedPricingSummary.adjustedAverage;
   const quotedTotalPrice = parseDecimalInput(todayQuote);
+  const hasValidTargetArea = Number.isFinite(targetMeasure?.quantity) && targetMeasure.quantity > 0;
+  const hasValidQuotedTotalPrice = Number.isFinite(quotedTotalPrice) && quotedTotalPrice > 0;
+  const hasValidAdjustedNormalizedPrice = Number.isFinite(adjustedNormalizedPrice) && adjustedNormalizedPrice > 0;
+  const hasValidAdjustedHeadlinePrice = Number.isFinite(adjustedHeadlinePrice) && adjustedHeadlinePrice > 0;
   const quotedPricePerM2 =
-    requiresDimensions && targetMeasure?.quantity && quotedTotalPrice > 0
+    requiresDimensions && hasValidTargetArea && hasValidQuotedTotalPrice
       ? quotedTotalPrice / targetMeasure.quantity
       : null;
 
   const estimatedComparablePrice =
     requiresDimensions
-      ? adjustedNormalizedPrice && targetMeasure?.quantity
+      ? hasValidAdjustedNormalizedPrice && hasValidTargetArea
         ? adjustedNormalizedPrice * targetMeasure.quantity
         : null
-      : adjustedHeadlinePrice;
+      : hasValidAdjustedHeadlinePrice
+        ? adjustedHeadlinePrice
+        : null;
 
-  const comparisonBase = requiresDimensions ? adjustedNormalizedPrice : estimatedComparablePrice;
+  const comparisonBase = requiresDimensions
+    ? hasValidAdjustedNormalizedPrice
+      ? adjustedNormalizedPrice
+      : null
+    : estimatedComparablePrice;
   const comparableQuote = requiresDimensions ? quotedPricePerM2 : quotedTotalPrice;
   const quoteEvaluation = classifyQuote(comparisonBase, comparableQuote);
   const inflationLabel = inflationYears.length
@@ -304,7 +316,6 @@ function ConsultaPage() {
                 step="0.01"
                 value={measureInputs.largo}
                 onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
-                onInput={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.currentTarget.value }))}
                 placeholder="0.00"
               />
             </label>
@@ -316,7 +327,6 @@ function ConsultaPage() {
                 step="0.01"
                 value={measureInputs.ancho}
                 onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
-                onInput={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.currentTarget.value }))}
                 placeholder="0.00"
               />
             </label>
@@ -383,7 +393,7 @@ function ConsultaPage() {
             {
               key: "resolvedAreaM2",
               label: "Área base",
-              render: (value) => (value ? `${value.toFixed(3)} m2` : "—"),
+              render: (value) => (Number.isFinite(value) && value > 0 ? `${value.toFixed(3)} m2` : "—"),
             },
             { key: "historicalPricePerM2", label: "Precio por m²", render: (value) => formatCurrency(value) },
           ]}
@@ -396,7 +406,9 @@ function ConsultaPage() {
           {requiresDimensions ? (
             <div className="details-block">
               <p className="muted">Medida histórica base: {formatDimensions(baseRecord?.dimensions)}</p>
-              <p className="muted">Área histórica base: {baseRecord?.resolvedAreaM2 ? `${baseRecord.resolvedAreaM2.toFixed(3)} m2` : "—"}</p>
+              <p className="muted">
+                Área histórica base: {Number.isFinite(baseRecord?.resolvedAreaM2) && baseRecord.resolvedAreaM2 > 0 ? `${baseRecord.resolvedAreaM2.toFixed(3)} m2` : "—"}
+              </p>
               <p className="muted">Base de comparación usada: Precio ajustado por m²</p>
               <p className="muted">Referencia ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
             </div>
@@ -412,7 +424,6 @@ function ConsultaPage() {
                     step="0.01"
                     value={measureInputs.largo}
                     onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
-                    onInput={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.currentTarget.value }))}
                     placeholder="0.00"
                   />
                 </label>
@@ -424,7 +435,6 @@ function ConsultaPage() {
                     step="0.01"
                     value={measureInputs.ancho}
                     onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
-                    onInput={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.currentTarget.value }))}
                     placeholder="0.00"
                   />
                 </label>
@@ -438,13 +448,12 @@ function ConsultaPage() {
                   step="0.01"
                   value={todayQuote}
                   onChange={(event) => setTodayQuote(event.target.value)}
-                  onInput={(event) => setTodayQuote(event.currentTarget.value)}
                   placeholder="0.00"
                 />
               </label>
               <div className="details-block">
-                <p className="muted">Área calculada: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
-                <p className="muted">Precio cotizado por m²: {quotedPricePerM2 ? formatCurrency(quotedPricePerM2) : "—"}</p>
+                <p className="muted">Área calculada: {hasValidTargetArea ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
+                <p className="muted">Precio cotizado por m²: {Number.isFinite(quotedPricePerM2) ? formatCurrency(quotedPricePerM2) : "—"}</p>
                 <p className="muted">Base de comparación: {formatCurrency(comparisonBase)} por m²</p>
                 <p className="muted">
                   Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}
@@ -460,7 +469,6 @@ function ConsultaPage() {
                 step="0.01"
                 value={todayQuote}
                 onChange={(event) => setTodayQuote(event.target.value)}
-                onInput={(event) => setTodayQuote(event.currentTarget.value)}
                 placeholder="0.00"
               />
             </label>
