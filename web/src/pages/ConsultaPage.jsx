@@ -154,15 +154,29 @@ function ConsultaPage() {
   }, [filters.categoryId]);
 
   const filteredConcepts = useMemo(() => {
-    if (!filters.categoryId) return [];
     const term = filters.search.trim().toLowerCase();
-    const conceptsByCategory = concepts.filter(
-      (concept) => concept.isActive && concept.categoryId === filters.categoryId
-    );
-    if (!term) return conceptsByCategory.slice(0, 50);
+    const activeConcepts = concepts.filter((concept) => concept.isActive);
+    const categoryScopedConcepts = filters.categoryId
+      ? activeConcepts.filter((concept) => concept.categoryId === filters.categoryId)
+      : activeConcepts;
 
-    return conceptsByCategory
-      .filter((concept) => concept.name.toLowerCase().includes(term))
+    if (!filters.categoryId && !term) return [];
+
+    const conceptMatches = term
+      ? categoryScopedConcepts.filter((concept) => concept.name.toLowerCase().includes(term))
+      : categoryScopedConcepts;
+
+    return conceptMatches
+      .sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+
+        const aStartsWith = term ? aName.startsWith(term) : false;
+        const bStartsWith = term ? bName.startsWith(term) : false;
+
+        if (aStartsWith !== bStartsWith) return aStartsWith ? -1 : 1;
+        return aName.localeCompare(bName, "es");
+      })
       .slice(0, 50);
   }, [concepts, filters.categoryId, filters.search]);
 
@@ -288,8 +302,11 @@ function ConsultaPage() {
           <input
             value={filters.search}
             onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
-            placeholder={filters.categoryId ? "Ej. block hueco 12x20x40" : "Primero selecciona una categoría"}
-            disabled={!filters.categoryId}
+            placeholder={
+              filters.categoryId
+                ? "Ej. block hueco 12x20x40"
+                : "Escribe para buscar en todos los conceptos"
+            }
           />
         </label>
 
@@ -298,14 +315,17 @@ function ConsultaPage() {
           <select
             value={filters.conceptId}
             onChange={(event) => setFilters((prev) => ({ ...prev, conceptId: event.target.value }))}
-            disabled={!filters.categoryId}
           >
             <option value="">
-              {filters.categoryId ? "Selecciona un concepto" : "Selecciona una categoría primero"}
+              {filters.categoryId
+                ? "Selecciona un concepto"
+                : filters.search.trim()
+                  ? "Selecciona un concepto"
+                  : "Escribe para buscar un concepto"}
             </option>
             {filteredConcepts.map((concept) => (
-              <option key={concept.id} value={concept.id}>
-                {concept.name}
+              <option key={concept.id || concept._id} value={concept.id || concept._id}>
+                {concept.name} · {concept.categoryName || "Sin categoría"}
               </option>
             ))}
           </select>
