@@ -14,9 +14,26 @@ function classifyQuote(adjustedPrice, quote) {
   return { label: "Dentro de rango", tone: "ok", differencePercent };
 }
 
+function normalizeNumericInput(rawValue) {
+  return String(rawValue ?? "")
+    .trim()
+    .replace(/\s/g, "")
+    .replace(";", ",");
+}
+
+function parseDecimalInput(rawValue) {
+  const normalizedValue = normalizeNumericInput(rawValue);
+  if (!normalizedValue) return null;
+  if (!/^[-+]?\d*([.,]\d*)?$/.test(normalizedValue)) return null;
+  if (/[.,]$/.test(normalizedValue)) return null;
+
+  const parsedValue = Number(normalizedValue.replace(",", "."));
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
 function toMeters(value, unit = "m") {
-  const numericValue = Number(value);
-  if (!numericValue) return null;
+  const numericValue = parseDecimalInput(value);
+  if (!(numericValue > 0)) return null;
   return unit === "cm" ? numericValue / 100 : numericValue;
 }
 
@@ -47,7 +64,7 @@ function isDimensionalConcept(concept) {
 }
 
 function toPositiveNumber(value) {
-  const numericValue = Number(value);
+  const numericValue = parseDecimalInput(value);
   return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
 }
 
@@ -203,7 +220,7 @@ function ConsultaPage() {
     [recordsWithDerivedMetrics, inflationByYear]
   );
   const adjustedNormalizedPrice = normalizedPricingSummary.adjustedAverage;
-  const quotedTotalPrice = Number(todayQuote);
+  const quotedTotalPrice = parseDecimalInput(todayQuote);
   const quotedPricePerM2 =
     requiresDimensions && targetMeasure?.quantity && quotedTotalPrice > 0
       ? quotedTotalPrice / targetMeasure.quantity
@@ -282,20 +299,24 @@ function ConsultaPage() {
             <label className="field">
               <span>Largo ({getMeasurementUnit(selectedConcept)})</span>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 step="0.01"
                 value={measureInputs.largo}
                 onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
+                onInput={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.currentTarget.value }))}
                 placeholder="0.00"
               />
             </label>
             <label className="field">
               <span>Ancho ({getMeasurementUnit(selectedConcept)})</span>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 step="0.01"
                 value={measureInputs.ancho}
                 onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
+                onInput={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.currentTarget.value }))}
                 placeholder="0.00"
               />
             </label>
@@ -386,45 +407,60 @@ function ConsultaPage() {
                 <label className="field">
                   <span>Largo cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     step="0.01"
                     value={measureInputs.largo}
                     onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
+                    onInput={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.currentTarget.value }))}
                     placeholder="0.00"
                   />
                 </label>
                 <label className="field">
                   <span>Ancho cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     step="0.01"
                     value={measureInputs.ancho}
                     onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
+                    onInput={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.currentTarget.value }))}
                     placeholder="0.00"
                   />
                 </label>
               </div>
-              <p className="muted">Área capturada: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
+              <p className="muted">Cálculo automático al escribir (sin botón de procesar).</p>
               <label className="field">
                 <span>Precio cotizado hoy (total)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   step="0.01"
                   value={todayQuote}
                   onChange={(event) => setTodayQuote(event.target.value)}
+                  onInput={(event) => setTodayQuote(event.currentTarget.value)}
                   placeholder="0.00"
                 />
               </label>
-              <p className="muted">Precio cotizado por m² (calculado): {quotedPricePerM2 ? formatCurrency(quotedPricePerM2) : "—"}</p>
+              <div className="details-block">
+                <p className="muted">Área calculada: {targetMeasure?.quantity ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
+                <p className="muted">Precio cotizado por m²: {quotedPricePerM2 ? formatCurrency(quotedPricePerM2) : "—"}</p>
+                <p className="muted">Base de comparación: {formatCurrency(comparisonBase)} por m²</p>
+                <p className="muted">
+                  Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}
+                </p>
+              </div>
             </>
           ) : (
             <label className="field">
               <span>Precio cotizado hoy</span>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 step="0.01"
                 value={todayQuote}
                 onChange={(event) => setTodayQuote(event.target.value)}
+                onInput={(event) => setTodayQuote(event.currentTarget.value)}
                 placeholder="0.00"
               />
             </label>
