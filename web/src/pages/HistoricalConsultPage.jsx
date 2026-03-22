@@ -58,6 +58,7 @@ function renderCompactHistoricalRow(row) {
       <p>
         <strong>{row.projectName || "Sin obra"}</strong> · {row.conceptName || "Sin concepto"}
       </p>
+      <p className="muted">Categoría: {row.categoryName || "Sin categoría"}</p>
       <p>
         Hist: <strong>{formatCurrency(row.amount)}</strong> · Ajustado: <strong>{formatAdjustedPrice(row)}</strong>
       </p>
