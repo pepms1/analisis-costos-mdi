@@ -11,7 +11,7 @@ function formatMeasurement(value) {
   return Number(value).toFixed(2);
 }
 
-function extractGeometry(row) {
+function getGeometryParts(row) {
   const largo =
     row?.derivedValues?.largoM ?? row?.dimensions?.largo ?? row?.dimensions?.length ?? row?.dimensions?.width ?? null;
   const ancho = row?.derivedValues?.anchoM ?? row?.dimensions?.ancho ?? row?.dimensions?.height ?? null;
@@ -19,14 +19,56 @@ function extractGeometry(row) {
   const largoText = formatMeasurement(largo);
   const anchoText = formatMeasurement(ancho);
 
-  if (!largoText || !anchoText) return "—";
+  if (!largoText || !anchoText) return null;
 
   const area = typeof row?.normalizedQuantity === "number" ? Number(row.normalizedQuantity).toFixed(2) : null;
 
+  return {
+    dimensionsLabel: `${largoText} × ${anchoText} ${measurementUnit}`,
+    areaLabel: area ? `Área ${area} m²` : "Área —",
+  };
+}
+
+function extractGeometry(row) {
+  const geometry = getGeometryParts(row);
+  if (!geometry) return "—";
+
   return (
     <div className="historical-geometry-cell">
-      <strong>{`${largoText} × ${anchoText} ${measurementUnit}`}</strong>
-      <span className="muted">{area ? `Área ${area} m²` : "Área —"}</span>
+      <strong>{geometry.dimensionsLabel}</strong>
+      <span className="muted">{geometry.areaLabel}</span>
+    </div>
+  );
+}
+
+function formatAdjustedPrice(row) {
+  const adjustedCandidate = row?.adjustedAmount ?? row?.adjustedPrice ?? null;
+  return typeof adjustedCandidate === "number" ? formatCurrency(adjustedCandidate) : "—";
+}
+
+function renderCompactHistoricalRow(row) {
+  const geometry = getGeometryParts(row);
+  const unitPriceByM2 = typeof row?.normalizedPrice === "number" ? formatCurrency(row.normalizedPrice) : null;
+
+  return (
+    <div className="historical-mobile-row">
+      <p>
+        <strong>{formatDate(row.priceDate)}</strong> · {row.supplierName || "Sin proveedor"}
+      </p>
+      <p>
+        <strong>{row.projectName || "Sin obra"}</strong> · {row.conceptName || "Sin concepto"}
+      </p>
+      <p>
+        Hist: <strong>{formatCurrency(row.amount)}</strong> · Ajustado: <strong>{formatAdjustedPrice(row)}</strong>
+      </p>
+      {geometry ? (
+        <p className="muted">
+          {geometry.dimensionsLabel} · {geometry.areaLabel}
+          {unitPriceByM2 ? ` · $/m² ${unitPriceByM2}` : ""}
+        </p>
+      ) : unitPriceByM2 ? (
+        <p className="muted">$/m² {unitPriceByM2}</p>
+      ) : null}
     </div>
   );
 }
@@ -184,6 +226,9 @@ function HistoricalConsultPage() {
       ) : null}
 
       <DataTable
+        className="historical-consult-table"
+        mobileVariant="compact-list"
+        mobileRowRenderer={renderCompactHistoricalRow}
         columns={[
           { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
           { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
