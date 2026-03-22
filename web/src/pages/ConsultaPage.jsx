@@ -94,8 +94,8 @@ function resolveHistoricalPricePerM2(item) {
   return totalPrice / areaM2;
 }
 
-function normalizeTargetArea(concept, measureInputs) {
-  if (!isDimensionalConcept(concept)) return null;
+function normalizeTargetArea({ concept, measureInputs, requiresDimensions }) {
+  if (!requiresDimensions) return null;
   const unit = getMeasurementUnit(concept);
   const largo = toMeters(measureInputs.largo, unit);
   const ancho = toMeters(measureInputs.ancho, unit);
@@ -167,10 +167,12 @@ function ConsultaPage() {
   }, [concepts, filters.categoryId, filters.search]);
 
   const { inflationSetting, inflationByYear, inflationYears } = useMemo(() => parseInflationByYear(adjustments), [adjustments]);
-  const selectedConcept = useMemo(
-    () => concepts.find((concept) => concept.id === filters.conceptId) || null,
-    [concepts, filters.conceptId]
-  );
+  const selectedConcept = useMemo(() => {
+    if (!filters.conceptId) return null;
+    return (
+      concepts.find((concept) => String(concept.id || concept._id) === String(filters.conceptId)) || null
+    );
+  }, [concepts, filters.conceptId]);
   const hasAreaReference = useMemo(
     () =>
       records.some(
@@ -215,7 +217,10 @@ function ConsultaPage() {
 
   const baseRecord = requiresDimensions ? dimensionalReferenceRecord : latestRecord;
   const adjustedHeadlinePrice = pricingSummary.adjustedAverage;
-  const targetMeasure = useMemo(() => normalizeTargetArea(selectedConcept, measureInputs), [selectedConcept, measureInputs]);
+  const targetMeasure = useMemo(
+    () => normalizeTargetArea({ concept: selectedConcept, measureInputs, requiresDimensions }),
+    [selectedConcept, measureInputs, requiresDimensions]
+  );
 
   const normalizedPricingSummary = useMemo(
     () => calculateAdjustedPrice(recordsWithDerivedMetrics, inflationByYear, { amountField: "historicalPricePerM2" }),
