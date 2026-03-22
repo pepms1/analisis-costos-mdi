@@ -193,6 +193,10 @@ p {
   display: none;
 }
 
+.mobile-table-compact-list {
+  display: none;
+}
+
 .stat-card h3 {
   font-size: 2rem;
   margin-top: 6px;
@@ -682,6 +686,36 @@ th {
 }
 
 @media (max-width: 520px) {
+  .historical-consult-table .mobile-table-cards--fallback {
+    display: none;
+  }
+
+  .historical-consult-table .mobile-table-compact-list {
+    display: grid;
+    gap: 6px;
+  }
+
+  .historical-consult-table .mobile-table-compact-item {
+    border-bottom: 1px solid rgba(215, 208, 194, 0.7);
+    padding: 8px 0;
+  }
+
+  .historical-consult-table .mobile-table-compact-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .historical-consult-table .historical-mobile-row {
+    display: grid;
+    gap: 4px;
+    font-size: 0.86rem;
+    line-height: 1.35;
+  }
+
+  .historical-consult-table .historical-mobile-row p {
+    overflow-wrap: anywhere;
+  }
+
   .consulta-summary-grid {
     grid-template-columns: 1fr;
   }
