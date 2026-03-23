@@ -13,7 +13,7 @@
   --border: #d5d7d8;
   --brand: #1d1a4f;
   --brand-soft: #ececf6;
-  --menu-bg: #1d1a4f;
+  --menu-bg: #0b3d91;
   --accent: #8a8d8f;
   --danger: #b23a48;
   --shadow: 0 20px 40px rgba(29, 26, 79, 0.08);
@@ -71,10 +71,7 @@ p {
   padding: 32px 24px;
   background: var(--menu-bg);
   color: #ffffff;
-  border-right: 1px solid #15123d;
-  background: var(--panel);
-  color: var(--text);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid #082f73;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -98,8 +95,6 @@ p {
   place-items: center;
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
-  background: var(--brand-soft);
-  color: var(--brand);
   margin-bottom: 18px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -107,8 +102,11 @@ p {
 
 .sidebar-copy {
   color: rgba(255, 255, 255, 0.72);
-  color: var(--muted);
   margin-top: 12px;
+}
+
+.sidebar .eyebrow {
+  color: rgba(255, 255, 255, 0.68);
 }
 
 .nav-list {
@@ -120,7 +118,6 @@ p {
   padding: 12px 14px;
   border-radius: 14px;
   color: rgba(255, 255, 255, 0.78);
-  color: var(--muted);
   transition: 160ms ease;
 }
 
@@ -128,8 +125,6 @@ p {
 .nav-link.active {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
-  background: var(--brand-soft);
-  color: var(--brand);
 }
 
 .main-panel {
