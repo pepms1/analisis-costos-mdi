@@ -1,19 +1,21 @@
+@import url("https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap");
+
 :root {
   color-scheme: light;
-  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+  font-family: "Jost", "Avenir Next", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  --bg: #f3f1ea;
-  --panel: #fffdf9;
-  --panel-strong: #f7f1e6;
-  --text: #1f2a2a;
-  --muted: #5d6a6a;
-  --border: #d7d0c2;
-  --brand: #264653;
-  --brand-soft: #dce6e8;
-  --accent: #b5653b;
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-strong: #f7f8f9;
+  --text: #1d1a4f;
+  --muted: #8a8d8f;
+  --border: #d5d7d8;
+  --brand: #1d1a4f;
+  --brand-soft: #ececf6;
+  --accent: #8a8d8f;
   --danger: #b23a48;
-  --shadow: 0 20px 50px rgba(31, 42, 42, 0.08);
+  --shadow: 0 20px 40px rgba(29, 26, 79, 0.08);
 }
 
 * {
@@ -23,9 +25,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    radial-gradient(circle at top left, rgba(181, 101, 59, 0.1), transparent 28%),
-    linear-gradient(180deg, #f0ebe2 0%, #f7f4ee 50%, #f3f1ea 100%);
+  background: var(--bg);
   color: var(--text);
 }
 
@@ -68,8 +68,9 @@ p {
 
 .sidebar {
   padding: 32px 24px;
-  background: linear-gradient(180deg, #18313b 0%, #264653 100%);
-  color: #f9f4ed;
+  background: var(--panel);
+  color: var(--text);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -91,14 +92,15 @@ p {
   border-radius: 18px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--brand-soft);
+  color: var(--brand);
   margin-bottom: 18px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
 .sidebar-copy {
-  color: rgba(249, 244, 237, 0.72);
+  color: var(--muted);
   margin-top: 12px;
 }
 
@@ -110,14 +112,14 @@ p {
 .nav-link {
   padding: 12px 14px;
   border-radius: 14px;
-  color: rgba(249, 244, 237, 0.74);
+  color: var(--muted);
   transition: 160ms ease;
 }
 
 .nav-link:hover,
 .nav-link.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 
 .main-panel {
