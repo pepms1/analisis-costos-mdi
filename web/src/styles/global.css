@@ -72,6 +72,9 @@ p {
   background: var(--menu-bg);
   color: #ffffff;
   border-right: 1px solid #15123d;
+  background: var(--panel);
+  color: var(--text);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -95,6 +98,8 @@ p {
   place-items: center;
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
+  background: var(--brand-soft);
+  color: var(--brand);
   margin-bottom: 18px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -102,6 +107,7 @@ p {
 
 .sidebar-copy {
   color: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
   margin-top: 12px;
 }
 
@@ -114,6 +120,7 @@ p {
   padding: 12px 14px;
   border-radius: 14px;
   color: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
   transition: 160ms ease;
 }
 
@@ -121,6 +128,8 @@ p {
 .nav-link.active {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 
 .main-panel {
