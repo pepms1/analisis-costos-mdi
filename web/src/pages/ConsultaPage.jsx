@@ -406,7 +406,92 @@ function ConsultaPage() {
         </div>
       </div>
 
-      <div className="content-grid wide-grid">
+      <div className="card form-grid consulta-quick-check">
+        <h3>Chequeo rápido de cotización</h3>
+        {requiresDimensions ? (
+          <div className="details-block">
+            <p className="muted">Medida histórica base: {formatDimensions(baseRecord?.dimensions)}</p>
+            <p className="muted">
+              Área histórica base: {Number.isFinite(baseRecord?.resolvedAreaM2) && baseRecord.resolvedAreaM2 > 0 ? `${baseRecord.resolvedAreaM2.toFixed(3)} m2` : "—"}
+            </p>
+            <p className="muted">Base de comparación usada: Precio ajustado por m²</p>
+            <p className="muted">Referencia ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
+          </div>
+        ) : null}
+        {requiresDimensions ? (
+          <>
+            <div className="subgrid consulta-quick-check-inputs">
+              <label className="field">
+                <span>Largo cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={measureInputs.largo}
+                  onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </label>
+              <label className="field">
+                <span>Ancho cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={measureInputs.ancho}
+                  onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </label>
+              <label className="field">
+                <span>Precio cotizado hoy (total)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={todayQuote}
+                  onChange={(event) => setTodayQuote(event.target.value)}
+                  placeholder="0.00"
+                />
+              </label>
+            </div>
+            <p className="muted">Cálculo automático al escribir (sin botón de procesar).</p>
+            <div className="details-block">
+              <p className="muted">Área calculada: {hasValidTargetArea ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
+              <p className="muted">Precio cotizado por m²: {Number.isFinite(quotedPricePerM2) ? formatCurrency(quotedPricePerM2) : "—"}</p>
+              <p className="muted">Base de comparación: {formatCurrency(comparisonBase)} por m²</p>
+              <p className="muted">
+                Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}
+              </p>
+            </div>
+          </>
+        ) : (
+          <label className="field">
+            <span>Precio cotizado hoy</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              step="0.01"
+              value={todayQuote}
+              onChange={(event) => setTodayQuote(event.target.value)}
+              placeholder="0.00"
+            />
+          </label>
+        )}
+
+        <div className={`alert ${quoteEvaluation?.tone === "high" || quoteEvaluation?.tone === "low" ? "error" : ""}`}>
+          <strong>Conclusión:</strong> {quoteEvaluation?.label || "Captura medidas y precio para evaluar"}
+          <p className="muted">Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}</p>
+          <p className="muted">
+            Base de comparación: {formatCurrency(comparisonBase)} {requiresDimensions ? "por m²" : "(total)"}
+          </p>
+          {requiresDimensions ? (
+            <p className="muted">Comparativo total estimado para el área capturada: {formatCurrency(estimatedComparablePrice)}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="content-grid consulta-history-grid">
         <DataTable
           columns={[
             { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
@@ -425,91 +510,6 @@ function ConsultaPage() {
           rows={recordsWithDerivedMetrics}
           emptyLabel="Selecciona un concepto para ver su histórico"
         />
-
-        <div className="card form-grid">
-          <h3>Chequeo rápido de cotización</h3>
-          {requiresDimensions ? (
-            <div className="details-block">
-              <p className="muted">Medida histórica base: {formatDimensions(baseRecord?.dimensions)}</p>
-              <p className="muted">
-                Área histórica base: {Number.isFinite(baseRecord?.resolvedAreaM2) && baseRecord.resolvedAreaM2 > 0 ? `${baseRecord.resolvedAreaM2.toFixed(3)} m2` : "—"}
-              </p>
-              <p className="muted">Base de comparación usada: Precio ajustado por m²</p>
-              <p className="muted">Referencia ajustada por m²: {formatCurrency(adjustedNormalizedPrice)}</p>
-            </div>
-          ) : null}
-          {requiresDimensions ? (
-            <>
-              <div className="subgrid">
-                <label className="field">
-                  <span>Largo cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    step="0.01"
-                    value={measureInputs.largo}
-                    onChange={(event) => setMeasureInputs((prev) => ({ ...prev, largo: event.target.value }))}
-                    placeholder="0.00"
-                  />
-                </label>
-                <label className="field">
-                  <span>Ancho cotizado hoy ({getMeasurementUnit(selectedConcept)})</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    step="0.01"
-                    value={measureInputs.ancho}
-                    onChange={(event) => setMeasureInputs((prev) => ({ ...prev, ancho: event.target.value }))}
-                    placeholder="0.00"
-                  />
-                </label>
-              </div>
-              <p className="muted">Cálculo automático al escribir (sin botón de procesar).</p>
-              <label className="field">
-                <span>Precio cotizado hoy (total)</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={todayQuote}
-                  onChange={(event) => setTodayQuote(event.target.value)}
-                  placeholder="0.00"
-                />
-              </label>
-              <div className="details-block">
-                <p className="muted">Área calculada: {hasValidTargetArea ? `${targetMeasure.quantity.toFixed(3)} m2` : "—"}</p>
-                <p className="muted">Precio cotizado por m²: {Number.isFinite(quotedPricePerM2) ? formatCurrency(quotedPricePerM2) : "—"}</p>
-                <p className="muted">Base de comparación: {formatCurrency(comparisonBase)} por m²</p>
-                <p className="muted">
-                  Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}
-                </p>
-              </div>
-            </>
-          ) : (
-            <label className="field">
-              <span>Precio cotizado hoy</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                step="0.01"
-                value={todayQuote}
-                onChange={(event) => setTodayQuote(event.target.value)}
-                placeholder="0.00"
-              />
-            </label>
-          )}
-
-          <div className={`alert ${quoteEvaluation?.tone === "high" || quoteEvaluation?.tone === "low" ? "error" : ""}`}>
-            <strong>Conclusión:</strong> {quoteEvaluation?.label || "Captura medidas y precio para evaluar"}
-            <p className="muted">Diferencia: {quoteEvaluation ? formatPercent(quoteEvaluation.differencePercent) : "—"}</p>
-            <p className="muted">
-              Base de comparación: {formatCurrency(comparisonBase)} {requiresDimensions ? "por m²" : "(total)"}
-            </p>
-            {requiresDimensions ? (
-              <p className="muted">Comparativo total estimado para el área capturada: {formatCurrency(estimatedComparablePrice)}</p>
-            ) : null}
-          </div>
-        </div>
       </div>
     </section>
   );

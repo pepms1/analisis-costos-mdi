@@ -774,9 +774,31 @@ th {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
 }
 
+.consulta-history-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .compact-form {
   grid-template-columns: 1fr 1fr;
   align-items: end;
+}
+
+.consulta-quick-check {
+  width: 100%;
+}
+
+.consulta-quick-check h3 {
+  grid-column: 1 / -1;
+}
+
+.consulta-quick-check .details-block,
+.consulta-quick-check .alert,
+.consulta-quick-check .muted {
+  grid-column: 1 / -1;
+}
+
+.consulta-quick-check-inputs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .details-block {
