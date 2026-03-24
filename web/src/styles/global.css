@@ -1199,17 +1199,52 @@ th {
 }
 
 .quick-capture-catalog-head {
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
   align-items: end;
+}
+
+.quick-capture-concept-field {
+  min-width: 0;
+}
+
+.quick-capture-concept-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.quick-capture-concept-inline select {
+  flex: 1 1 360px;
+  min-width: 220px;
 }
 
 .quick-create-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-start;
+  flex: 0 1 auto;
 }
 
 .quick-create-actions .ghost-button {
   padding: 6px 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .quick-capture-catalog-head {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-capture-concept-inline {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .quick-capture-concept-inline select {
+    min-width: 100%;
+  }
 }
 
 .quick-create-modal {
