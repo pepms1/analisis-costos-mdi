@@ -1197,3 +1197,23 @@ th {
   display: grid;
   gap: 12px;
 }
+
+.quick-capture-catalog-head {
+  align-items: end;
+}
+
+.quick-create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-create-actions .ghost-button {
+  padding: 6px 10px;
+}
+
+.quick-create-modal {
+  width: min(640px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+}

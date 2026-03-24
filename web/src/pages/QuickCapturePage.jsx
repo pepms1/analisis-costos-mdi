@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { PERMISSIONS } from "../utils/permissions";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
 const initialForm = {
+  categoryFilterId: "",
   conceptId: "",
   unit: "",
   supplierId: "",
@@ -20,31 +22,98 @@ const initialForm = {
   measurementUnit: "cm",
 };
 
+const initialCategoryQuickForm = {
+  name: "",
+  mainType: "material",
+  description: "",
+};
+
+const initialSupplierQuickForm = {
+  name: "",
+  legalName: "",
+  contactName: "",
+  phone: "",
+  email: "",
+  notes: "",
+};
+
+const initialConceptQuickForm = {
+  name: "",
+  categoryId: "",
+  mainType: "material",
+  primaryUnit: "pieza",
+  calculationType: "fixed_unit",
+  requiresDimensions: false,
+  description: "",
+};
+
 const LABOR_PRICING_MODE = "total_price";
 
 function QuickCapturePage() {
   const { hasPermission } = useAuth();
   const canQuickCapture = hasPermission(PERMISSIONS.PRICES_QUICK_CAPTURE);
   const canCreatePrice = hasPermission(PERMISSIONS.PRICES_CREATE);
+  const canManageCatalogs = hasPermission(PERMISSIONS.CATALOGS_MANAGE);
+  const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState({ error: "", success: "" });
+  const [quickCreateType, setQuickCreateType] = useState("");
+  const [quickCreateStatus, setQuickCreateStatus] = useState({ error: "", success: "" });
+  const [categoryQuickForm, setCategoryQuickForm] = useState(initialCategoryQuickForm);
+  const [supplierQuickForm, setSupplierQuickForm] = useState(initialSupplierQuickForm);
+  const [conceptQuickForm, setConceptQuickForm] = useState(initialConceptQuickForm);
+
+  const filteredConcepts = useMemo(
+    () => concepts.filter((concept) => (form.categoryFilterId ? concept.categoryId === form.categoryFilterId : true)),
+    [concepts, form.categoryFilterId]
+  );
+
+  async function loadCatalogs() {
+    const [categoriesData, conceptsData, suppliersData, projectsData] = await Promise.all([
+      apiRequest("/categories"),
+      apiRequest("/concepts"),
+      apiRequest("/suppliers"),
+      apiRequest("/projects"),
+    ]);
+
+    setCategories((categoriesData.items || []).filter((category) => category.isActive));
+    setConcepts((conceptsData.items || []).filter((concept) => concept.isActive));
+    setSuppliers(suppliersData.items || []);
+    setProjects((projectsData.items || []).filter((project) => project.isActive));
+  }
+
+  async function refreshCategories() {
+    const categoriesData = await apiRequest("/categories");
+    setCategories((categoriesData.items || []).filter((category) => category.isActive));
+  }
+
+  async function refreshConcepts() {
+    const conceptsData = await apiRequest("/concepts");
+    setConcepts((conceptsData.items || []).filter((concept) => concept.isActive));
+  }
+
+  async function refreshSuppliers() {
+    const suppliersData = await apiRequest("/suppliers");
+    setSuppliers(suppliersData.items || []);
+  }
 
   useEffect(() => {
-    Promise.all([apiRequest("/concepts"), apiRequest("/suppliers"), apiRequest("/projects")])
-      .then(([conceptsData, suppliersData, projectsData]) => {
-        setConcepts((conceptsData.items || []).filter((concept) => concept.isActive));
-        setSuppliers(suppliersData.items || []);
-        setProjects((projectsData.items || []).filter((project) => project.isActive));
-      })
-      .catch(() => {
-        setConcepts([]);
-        setSuppliers([]);
-        setProjects([]);
-      });
+    loadCatalogs().catch(() => {
+      setCategories([]);
+      setConcepts([]);
+      setSuppliers([]);
+      setProjects([]);
+    });
   }, []);
+
+  useEffect(() => {
+    if (form.conceptId && !filteredConcepts.some((concept) => concept.id === form.conceptId)) {
+      setForm((prev) => ({ ...prev, conceptId: "", unit: "" }));
+    }
+  }, [filteredConcepts, form.conceptId]);
 
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === form.conceptId), [concepts, form.conceptId]);
   const conceptBaseUnit = (selectedConcept?.primaryUnit || "").trim();
@@ -67,6 +136,118 @@ function QuickCapturePage() {
       unit: conceptBaseUnit || "",
     }));
   }, [conceptBaseUnit, form.conceptId]);
+
+  useEffect(() => {
+    setConceptQuickForm((prev) => {
+      if (prev.categoryId) return prev;
+      return {
+        ...prev,
+        categoryId: form.categoryFilterId || prev.categoryId,
+      };
+    });
+  }, [form.categoryFilterId]);
+
+  function openQuickCreate(type) {
+    setQuickCreateType(type);
+    setQuickCreateStatus({ error: "", success: "" });
+    if (type === "concept") {
+      setConceptQuickForm((prev) => ({ ...prev, categoryId: prev.categoryId || form.categoryFilterId }));
+    }
+  }
+
+  function closeQuickCreate() {
+    setQuickCreateType("");
+    setQuickCreateStatus({ error: "", success: "" });
+  }
+
+  async function handleQuickCreateCategory(event) {
+    event.preventDefault();
+    setQuickCreateStatus({ error: "", success: "" });
+
+    try {
+      const created = await apiRequest("/categories", {
+        method: "POST",
+        body: JSON.stringify(categoryQuickForm),
+      });
+      const createdCategoryId = created?.item?.id || created?.id;
+
+      await refreshCategories();
+      setCategoryQuickForm(initialCategoryQuickForm);
+      setQuickCreateStatus({ error: "", success: "Categoría creada correctamente." });
+
+      if (createdCategoryId) {
+        setForm((prev) => ({ ...prev, categoryFilterId: createdCategoryId, conceptId: "" }));
+        setConceptQuickForm((prev) => ({ ...prev, categoryId: createdCategoryId }));
+      }
+      closeQuickCreate();
+    } catch (submitError) {
+      setQuickCreateStatus({ error: submitError.message, success: "" });
+    }
+  }
+
+  async function handleQuickCreateSupplier(event) {
+    event.preventDefault();
+    setQuickCreateStatus({ error: "", success: "" });
+
+    try {
+      const created = await apiRequest("/suppliers", {
+        method: "POST",
+        body: JSON.stringify(supplierQuickForm),
+      });
+      const createdSupplierId = created?.item?.id || created?.id;
+
+      await refreshSuppliers();
+      setSupplierQuickForm(initialSupplierQuickForm);
+      setQuickCreateStatus({ error: "", success: "Proveedor creado correctamente." });
+
+      if (createdSupplierId) {
+        setForm((prev) => ({ ...prev, supplierId: createdSupplierId }));
+      }
+      closeQuickCreate();
+    } catch (submitError) {
+      setQuickCreateStatus({ error: submitError.message, success: "" });
+    }
+  }
+
+  async function handleQuickCreateConcept(event) {
+    event.preventDefault();
+    setQuickCreateStatus({ error: "", success: "" });
+
+    try {
+      const payload = {
+        ...conceptQuickForm,
+        dimensionSchema: conceptQuickForm.requiresDimensions
+          ? {
+              width: true,
+              height: ["area_based"].includes(conceptQuickForm.calculationType),
+              length: ["linear_based", "height_based"].includes(conceptQuickForm.calculationType),
+              inputUnit: "cm",
+            }
+          : null,
+      };
+
+      const created = await apiRequest("/concepts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const createdConceptId = created?.item?.id || created?.id;
+
+      await refreshConcepts();
+      setConceptQuickForm(initialConceptQuickForm);
+      setQuickCreateStatus({ error: "", success: "Concepto creado correctamente." });
+
+      if (createdConceptId) {
+        setForm((prev) => ({
+          ...prev,
+          categoryFilterId: payload.categoryId,
+          conceptId: createdConceptId,
+        }));
+      }
+      closeQuickCreate();
+    } catch (submitError) {
+      setQuickCreateStatus({ error: submitError.message, success: "" });
+    }
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -143,17 +324,43 @@ function QuickCapturePage() {
       <form className="card form-grid" onSubmit={handleSubmit}>
         <h3>Nuevo precio</h3>
 
-        <label className="field">
-          <span>Concepto</span>
-          <select value={form.conceptId} onChange={(event) => setForm((prev) => ({ ...prev, conceptId: event.target.value }))} required>
-            <option value="">Selecciona un concepto</option>
-            {concepts.map((concept) => (
-              <option key={concept.id} value={concept.id}>
-                {concept.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="subgrid quick-capture-catalog-head">
+          <label className="field">
+            <span>Categoría (filtro)</span>
+            <select
+              value={form.categoryFilterId}
+              onChange={(event) => setForm((prev) => ({ ...prev, categoryFilterId: event.target.value }))}
+            >
+              <option value="">Todas las categorías</option>
+              {categories.map((category) => (
+                <option key={category.id || category._id} value={category.id || category._id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Concepto</span>
+            <select value={form.conceptId} onChange={(event) => setForm((prev) => ({ ...prev, conceptId: event.target.value }))} required>
+              <option value="">Selecciona un concepto</option>
+              {filteredConcepts.map((concept) => (
+                <option key={concept.id} value={concept.id}>
+                  {concept.name}
+                </option>
+              ))}
+            </select>
+            <small className="muted">Resultados: {filteredConcepts.length}</small>
+          </label>
+        </div>
+
+        {canManageCatalogs ? (
+          <div className="quick-create-actions" role="group" aria-label="Altas rápidas de catálogos">
+            <button type="button" className="ghost-button" onClick={() => openQuickCreate("concept")}>+ Nuevo concepto</button>
+            <button type="button" className="ghost-button" onClick={() => openQuickCreate("supplier")}>+ Nuevo proveedor</button>
+            <button type="button" className="ghost-button" onClick={() => openQuickCreate("category")}>+ Nueva categoría</button>
+          </div>
+        ) : null}
 
         <div className="subgrid">
           <label className="field">
@@ -296,6 +503,132 @@ function QuickCapturePage() {
           </button>
         </div>
       </form>
+
+      {quickCreateType ? (
+        <div className="simple-modal-backdrop" role="presentation">
+          <div className="simple-modal quick-create-modal">
+            {quickCreateType === "category" ? (
+              <form className="form-grid" onSubmit={handleQuickCreateCategory}>
+                <h3>Nueva categoría</h3>
+                <label className="field">
+                  <span>Nombre</span>
+                  <input value={categoryQuickForm.name} onChange={(event) => setCategoryQuickForm((prev) => ({ ...prev, name: event.target.value }))} required />
+                </label>
+                <label className="field">
+                  <span>Tipo principal</span>
+                  <select value={categoryQuickForm.mainType} onChange={(event) => setCategoryQuickForm((prev) => ({ ...prev, mainType: event.target.value }))}>
+                    {MAIN_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Descripción</span>
+                  <textarea value={categoryQuickForm.description} onChange={(event) => setCategoryQuickForm((prev) => ({ ...prev, description: event.target.value }))} rows="3" />
+                </label>
+                {quickCreateStatus.error ? <div className="alert error">{quickCreateStatus.error}</div> : null}
+                <div className="button-row">
+                  <button type="submit" className="primary-button">Guardar categoría</button>
+                  <button type="button" className="ghost-button" onClick={closeQuickCreate}>Cancelar</button>
+                </div>
+              </form>
+            ) : null}
+
+            {quickCreateType === "supplier" ? (
+              <form className="form-grid" onSubmit={handleQuickCreateSupplier}>
+                <h3>Nuevo proveedor</h3>
+                <label className="field">
+                  <span>Nombre comercial</span>
+                  <input value={supplierQuickForm.name} onChange={(event) => setSupplierQuickForm((prev) => ({ ...prev, name: event.target.value }))} required />
+                </label>
+                <label className="field">
+                  <span>Razón social</span>
+                  <input value={supplierQuickForm.legalName} onChange={(event) => setSupplierQuickForm((prev) => ({ ...prev, legalName: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Contacto</span>
+                  <input value={supplierQuickForm.contactName} onChange={(event) => setSupplierQuickForm((prev) => ({ ...prev, contactName: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Teléfono</span>
+                  <input value={supplierQuickForm.phone} onChange={(event) => setSupplierQuickForm((prev) => ({ ...prev, phone: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Email</span>
+                  <input value={supplierQuickForm.email} onChange={(event) => setSupplierQuickForm((prev) => ({ ...prev, email: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Notas</span>
+                  <textarea value={supplierQuickForm.notes} onChange={(event) => setSupplierQuickForm((prev) => ({ ...prev, notes: event.target.value }))} rows="3" />
+                </label>
+                {quickCreateStatus.error ? <div className="alert error">{quickCreateStatus.error}</div> : null}
+                <div className="button-row">
+                  <button type="submit" className="primary-button">Guardar proveedor</button>
+                  <button type="button" className="ghost-button" onClick={closeQuickCreate}>Cancelar</button>
+                </div>
+              </form>
+            ) : null}
+
+            {quickCreateType === "concept" ? (
+              <form className="form-grid" onSubmit={handleQuickCreateConcept}>
+                <h3>Nuevo concepto</h3>
+                <label className="field">
+                  <span>Nombre</span>
+                  <input value={conceptQuickForm.name} onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, name: event.target.value }))} required />
+                </label>
+                <label className="field">
+                  <span>Categoría</span>
+                  <select value={conceptQuickForm.categoryId} onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, categoryId: event.target.value }))} required>
+                    <option value="">Selecciona una categoría</option>
+                    {categories.map((category) => (
+                      <option key={category.id || category._id} value={category.id || category._id}>{category.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Tipo principal</span>
+                  <select value={conceptQuickForm.mainType} onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, mainType: event.target.value }))}>
+                    {MAIN_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Unidad principal</span>
+                  <input value={conceptQuickForm.primaryUnit} onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, primaryUnit: event.target.value }))} required />
+                </label>
+                <label className="field">
+                  <span>Tipo de cálculo</span>
+                  <select value={conceptQuickForm.calculationType} onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, calculationType: event.target.value }))}>
+                    <option value="fixed_unit">fixed_unit</option>
+                    <option value="area_based">area_based</option>
+                    <option value="linear_based">linear_based</option>
+                    <option value="height_based">height_based</option>
+                    <option value="custom_formula">custom_formula</option>
+                  </select>
+                </label>
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={conceptQuickForm.requiresDimensions}
+                    onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, requiresDimensions: event.target.checked }))}
+                  />
+                  <span>Requiere dimensiones</span>
+                </label>
+                <label className="field">
+                  <span>Descripción</span>
+                  <textarea value={conceptQuickForm.description} onChange={(event) => setConceptQuickForm((prev) => ({ ...prev, description: event.target.value }))} rows="3" />
+                </label>
+                {quickCreateStatus.error ? <div className="alert error">{quickCreateStatus.error}</div> : null}
+                <div className="button-row">
+                  <button type="submit" className="primary-button">Guardar concepto</button>
+                  <button type="button" className="ghost-button" onClick={closeQuickCreate}>Cancelar</button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
