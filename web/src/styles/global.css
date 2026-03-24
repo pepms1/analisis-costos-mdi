@@ -89,6 +89,7 @@ p {
 
 .sidebar-logo {
   width: min(100%, 147px);
+  width: min(100%, 210px);
   height: auto;
   border-radius: 12px;
   display: block;
@@ -439,6 +440,7 @@ th {
 
   .sidebar-logo {
     width: min(100%, 126px);
+    width: min(100%, 180px);
     margin-bottom: 8px;
   }
 
