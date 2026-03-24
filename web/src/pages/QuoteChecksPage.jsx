@@ -3,12 +3,13 @@ import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { formatCurrency, formatPercent } from "../utils/formatters";
+import { getTodayDateOnlyLocal } from "../utils/dateOnly";
 
 const initialForm = {
   conceptId: "",
   supplierId: "",
   quotedPrice: "",
-  targetDate: new Date().toISOString().slice(0, 10),
+  targetDate: getTodayDateOnlyLocal(),
   largo: "",
   ancho: "",
   measurementUnit: "cm",

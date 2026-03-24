@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
-import { formatCurrency, formatDate } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency } from "../utils/formatters";
 
 const PAGE_SIZE = 25;
 
@@ -53,7 +53,7 @@ function renderCompactHistoricalRow(row) {
   return (
     <div className="historical-mobile-row">
       <p>
-        <strong>{formatDate(row.priceDate)}</strong> · {row.supplierName || "Sin proveedor"}
+        <strong>{formatCalendarDate(row.priceDate)}</strong> · {row.supplierName || "Sin proveedor"}
       </p>
       <p>
         <strong>{row.projectName || "Sin obra"}</strong> · {row.conceptName || "Sin concepto"}
@@ -231,7 +231,7 @@ function HistoricalConsultPage() {
         mobileVariant="compact-list"
         mobileRowRenderer={renderCompactHistoricalRow}
         columns={[
-          { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
+          { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
           { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
           { key: "amount", label: "Precio registrado", render: (value) => <strong>{formatCurrency(value)}</strong> },
           { key: "conceptName", label: "Concepto" },

@@ -7,6 +7,7 @@ import { Supplier } from "../models/Supplier.js";
 import { AppError } from "../utils/AppError.js";
 import { centsToAmount, parseMoneyInput } from "../utils/money.js";
 import { buildPricingPayload, normalizeDimensions, toMeters } from "../utils/normalization.js";
+import { parseDateOnly, toDateOnlyString } from "../utils/dateOnly.js";
 
 function parsePositiveInt(value) {
   if (!value) return null;
@@ -49,8 +50,8 @@ export async function listPriceRecords(req, res) {
   if (req.query.mainType) query.mainType = req.query.mainType;
   if (req.query.dateFrom || req.query.dateTo) {
     query.priceDate = {};
-    if (req.query.dateFrom) query.priceDate.$gte = new Date(req.query.dateFrom);
-    if (req.query.dateTo) query.priceDate.$lte = new Date(req.query.dateTo);
+    if (req.query.dateFrom) query.priceDate.$gte = parseDateOnly(req.query.dateFrom, { fieldName: "dateFrom" });
+    if (req.query.dateTo) query.priceDate.$lte = parseDateOnly(req.query.dateTo, { fieldName: "dateTo", endOfDay: true });
   }
 
   const searchFilter = await resolveSearchFilters(req.query.search);
@@ -88,7 +89,7 @@ export async function listPriceRecords(req, res) {
   res.json({
     items: items.map((item) => ({
       id: item.id,
-      priceDate: item.priceDate,
+      priceDate: toDateOnlyString(item.priceDate),
       conceptId: typeof item.conceptId === "object" ? item.conceptId?._id?.toString() : item.conceptId?.toString(),
       supplierId:
         typeof item.supplierId === "object" ? item.supplierId?._id?.toString() : item.supplierId?.toString(),
@@ -232,6 +233,7 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
 
   return {
     ...rest,
+    priceDate: parseDateOnly(rest.priceDate, { fieldName: "priceDate" }),
     mainType,
     categoryId,
     conceptId,

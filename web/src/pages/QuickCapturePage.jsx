@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { MAIN_TYPE_OPTIONS } from "../utils/constants";
+import { getTodayDateOnlyLocal } from "../utils/dateOnly";
 import { PERMISSIONS } from "../utils/permissions";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
@@ -12,7 +13,7 @@ const initialForm = {
   unit: "",
   supplierId: "",
   projectId: "",
-  priceDate: new Date().toISOString().slice(0, 10),
+  priceDate: getTodayDateOnlyLocal(),
   amount: "",
   pricingMode: "unit_price",
   location: "",

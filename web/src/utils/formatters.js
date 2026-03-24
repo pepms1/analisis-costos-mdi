@@ -1,9 +1,15 @@
+import { formatDateOnly } from "./dateOnly";
+
 export function formatDate(value) {
   if (!value) return "—";
 
   return new Intl.DateTimeFormat("es-MX", {
     dateStyle: "medium",
   }).format(new Date(value));
+}
+
+export function formatCalendarDate(value) {
+  return formatDateOnly(value, "es-MX");
 }
 
 export function formatCurrency(value) {
