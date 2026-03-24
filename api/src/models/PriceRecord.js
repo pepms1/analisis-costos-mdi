@@ -8,6 +8,7 @@ const priceRecordSchema = new mongoose.Schema(
     conceptId: { type: mongoose.Schema.Types.ObjectId, ref: "Concept", required: true },
     supplierId: { type: mongoose.Schema.Types.ObjectId, ref: "Supplier", default: null },
     projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
+    projectIds: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Project" }], default: [] },
     unit: { type: String, required: true },
     priceDate: { type: Date, required: true },
     pricingMode: { type: String, enum: ["unit_price", "total_price"], required: true },
@@ -58,9 +59,11 @@ const priceRecordSchema = new mongoose.Schema(
 );
 
 priceRecordSchema.index({ projectId: 1 });
+priceRecordSchema.index({ projectIds: 1 });
 priceRecordSchema.index({ conceptId: 1 });
 priceRecordSchema.index({ supplierId: 1 });
 priceRecordSchema.index({ projectId: 1, conceptId: 1, priceDate: -1 });
+priceRecordSchema.index({ projectIds: 1, conceptId: 1, priceDate: -1 });
 priceRecordSchema.index({ isDeleted: 1, priceDate: -1 });
 
 export const PriceRecord = mongoose.model("PriceRecord", priceRecordSchema);

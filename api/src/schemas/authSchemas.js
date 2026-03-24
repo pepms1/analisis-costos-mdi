@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { USER_ROLES, MAIN_TYPES, CALCULATION_TYPES, ADJUSTMENT_SCOPES, ADJUSTMENT_TYPES } from "../utils/constants.js";
 
+const objectIdLikeSchema = z.string().trim().regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId");
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -85,7 +87,8 @@ export const createPriceRecordSchema = z.object({
   categoryId: z.string().min(1),
   conceptId: z.string().min(1),
   supplierId: z.string().nullable().optional(),
-  projectId: z.string().nullable().optional(),
+  projectId: objectIdLikeSchema.nullable().optional(),
+  projectIds: z.array(objectIdLikeSchema).optional(),
   unit: z.string().min(1),
   priceDate: z.string().min(1),
   pricingMode: z.enum(["unit_price", "total_price"]).optional(),
@@ -117,6 +120,17 @@ export const createPriceRecordSchema = z.object({
     })
     .optional(),
   attributes: z.record(z.string(), z.any()).optional(),
+}).superRefine((value, context) => {
+  if (!Array.isArray(value.projectIds)) return;
+  const normalized = value.projectIds.map((item) => String(item).trim());
+  const unique = new Set(normalized);
+  if (unique.size !== normalized.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "projectIds contains duplicated ids",
+      path: ["projectIds"],
+    });
+  }
 });
 
 export const updatePriceRecordSchema = createPriceRecordSchema;

@@ -13,7 +13,9 @@ export async function getSummary(_req, res) {
     Supplier.countDocuments({ isActive: true }),
     AdjustmentSetting.countDocuments({ isActive: true }),
     Project.countDocuments({ isActive: true }),
-    PriceRecord.countDocuments({ projectId: { $ne: null } }),
+    PriceRecord.countDocuments({
+      $or: [{ projectId: { $ne: null } }, { projectIds: { $exists: true, $ne: [] } }],
+    }),
   ]);
 
   res.json({

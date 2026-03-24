@@ -4,7 +4,7 @@ import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
-import { formatCalendarDate, formatCurrency } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../utils/formatters";
 import { getTodayDateOnlyLocal, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
@@ -16,7 +16,7 @@ const initialForm = {
   categoryId: "",
   conceptId: "",
   supplierId: "",
-  projectId: "",
+  projectIds: [],
   unit: "pieza",
   priceDate: getTodayDateOnlyLocal(),
   pricingMode: "unit_price",
@@ -199,7 +199,7 @@ function HistoricalAdminCatalogPage() {
       categoryId: row.categoryId || "",
       conceptId: row.conceptId || "",
       supplierId: row.supplierId || "",
-      projectId: row.projectId || "",
+      projectIds: row.projectIds?.length ? row.projectIds : row.projectId ? [row.projectId] : [],
       unit: row.unit || "pieza",
       priceDate: row.priceDate ? toDateOnlyString(row.priceDate) : initialForm.priceDate,
       pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
@@ -233,7 +233,8 @@ function HistoricalAdminCatalogPage() {
       categoryId: form.categoryId,
       conceptId: form.conceptId,
       supplierId: form.supplierId || null,
-      projectId: form.projectId || null,
+      projectIds: form.projectIds,
+      projectId: form.projectIds[0] || null,
       unit: form.unit,
       priceDate: form.priceDate,
       pricingMode: effectivePricingMode,
@@ -401,15 +402,24 @@ function HistoricalAdminCatalogPage() {
             </select>
           </label>
           <label className="field">
-            <span>Obra</span>
-            <select value={form.projectId} onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}>
-              <option value="">Sin obra</option>
+            <span>Obras</span>
+            <select
+              multiple
+              value={form.projectIds}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  projectIds: Array.from(e.target.selectedOptions, (option) => option.value),
+                }))
+              }
+            >
               {projects.map((project) => (
                 <option key={project.id || project._id} value={project.id || project._id}>
                   {project.name}
                 </option>
               ))}
             </select>
+            <small className="muted">Sin selección = histórico general (sin obra).</small>
           </label>
           <label className="field">
             <span>Fecha</span>
@@ -512,7 +522,11 @@ function HistoricalAdminCatalogPage() {
       <DataTable
         columns={[
           { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
-          { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
+          {
+            key: "projectNames",
+            label: "Obra",
+            render: (value, row) => formatProjectsCompact(value || (row.projectName ? [row.projectName] : [])),
+          },
           { key: "conceptName", label: "Concepto" },
           { key: "categoryName", label: "Categoría" },
           { key: "supplierName", label: "Proveedor" },

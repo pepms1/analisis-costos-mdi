@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
-import { formatCalendarDate, formatCurrency } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../utils/formatters";
 
 const PAGE_SIZE = 25;
 
@@ -56,7 +56,7 @@ function renderCompactHistoricalRow(row) {
         <strong>{formatCalendarDate(row.priceDate)}</strong> · {row.supplierName || "Sin proveedor"}
       </p>
       <p>
-        <strong>{row.projectName || "Sin obra"}</strong> · {row.conceptName || "Sin concepto"}
+        <strong>{formatProjectsCompact(row.projectNames || (row.projectName ? [row.projectName] : []))}</strong> · {row.conceptName || "Sin concepto"}
       </p>
       <p className="muted">Categoría: {row.categoryName || "Sin categoría"}</p>
       <p>
@@ -239,7 +239,11 @@ function HistoricalConsultPage() {
         mobileRowRenderer={renderCompactHistoricalRow}
         columns={[
           { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
-          { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
+          {
+            key: "projectNames",
+            label: "Obra",
+            render: (value, row) => formatProjectsCompact(value || (row.projectName ? [row.projectName] : [])),
+          },
           { key: "amount", label: "Precio registrado", render: (value) => <strong>{formatCurrency(value)}</strong> },
           { key: "conceptName", label: "Concepto" },
           { key: "categoryName", label: "Categoría" },

@@ -4,6 +4,7 @@ import { ImportRowDecision } from "../models/ImportRowDecision.js";
 import { PriceRecord } from "../models/PriceRecord.js";
 import { Project } from "../models/Project.js";
 import { Supplier } from "../models/Supplier.js";
+import mongoose from "mongoose";
 import { AppError } from "../utils/AppError.js";
 import { centsToAmount, parseMoneyInput } from "../utils/money.js";
 import { buildPricingPayload, normalizeDimensions, toMeters } from "../utils/normalization.js";
@@ -14,6 +15,69 @@ function parsePositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+export function normalizeProjectIdsInput(projectIds, projectId) {
+  const normalized = [];
+  const pushIfValid = (value) => {
+    if (!value) return;
+    const normalizedId = String(value).trim();
+    if (normalizedId) normalized.push(normalizedId);
+  };
+
+  if (Array.isArray(projectIds)) {
+    projectIds.forEach((value) => pushIfValid(value));
+  }
+
+  pushIfValid(projectId);
+  return normalized.filter((value) => value !== "null" && value !== "undefined");
+}
+
+function assertUniqueProjectIds(projectIds = []) {
+  const unique = new Set(projectIds);
+  if (unique.size !== projectIds.length) {
+    throw new AppError("projectIds cannot contain duplicated values", 400);
+  }
+}
+
+function toUniqueProjectIds(projectIds = []) {
+  return [...new Set(projectIds)];
+}
+
+function assertValidProjectIds(projectIds = []) {
+  const invalidValue = projectIds.find((value) => !mongoose.Types.ObjectId.isValid(value));
+  if (invalidValue) {
+    throw new AppError("Invalid projectId provided", 400);
+  }
+}
+
+function getRecordProjectIds(item) {
+  const projectIdsFromArray = Array.isArray(item.projectIds) ? item.projectIds : [];
+  const normalizedFromArray = projectIdsFromArray
+    .map((project) => (typeof project === "object" ? project?._id?.toString() : project?.toString()))
+    .filter(Boolean);
+  const legacyProjectId = typeof item.projectId === "object" ? item.projectId?._id?.toString() : item.projectId?.toString();
+  const all = [...normalizedFromArray, legacyProjectId].filter(Boolean);
+  return [...new Set(all)];
+}
+
+function getRecordProjectNames(item) {
+  const projectNamesFromArray = (Array.isArray(item.projectIds) ? item.projectIds : [])
+    .map((project) => (typeof project === "object" ? project?.name : null))
+    .filter(Boolean);
+  const legacyName = item.projectId?.name || null;
+  const names = [...projectNamesFromArray, legacyName].filter(Boolean);
+  const unique = [...new Set(names)];
+  if (unique.length > 0) return unique;
+
+  if (item.projectNameSnapshot) {
+    return item.projectNameSnapshot
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+  }
+  if (item.projectName) return [item.projectName];
+  return [];
 }
 
 async function resolveSearchFilters(search) {
@@ -46,7 +110,15 @@ export async function listPriceRecords(req, res) {
   if (req.query.conceptId) query.conceptId = req.query.conceptId;
   if (req.query.categoryId) query.categoryId = req.query.categoryId;
   if (req.query.supplierId) query.supplierId = req.query.supplierId;
-  if (req.query.projectId) query.projectId = req.query.projectId;
+  if (req.query.projectId) {
+    if (!mongoose.Types.ObjectId.isValid(req.query.projectId)) {
+      throw new AppError("Invalid projectId provided", 400);
+    }
+    query.$and = [
+      ...(query.$and || []),
+      { $or: [{ projectId: req.query.projectId }, { projectIds: req.query.projectId }] },
+    ];
+  }
   if (req.query.mainType) query.mainType = req.query.mainType;
   if (req.query.dateFrom || req.query.dateTo) {
     query.priceDate = {};
@@ -78,6 +150,7 @@ export async function listPriceRecords(req, res) {
       .populate("conceptId", "name")
       .populate("supplierId", "name")
       .populate("projectId", "name code")
+      .populate("projectIds", "name code")
       .populate("createdBy", "name email");
   }
 
@@ -87,45 +160,7 @@ export async function listPriceRecords(req, res) {
   ]);
 
   res.json({
-    items: items.map((item) => ({
-      id: item.id,
-      priceDate: toDateOnlyString(item.priceDate),
-      conceptId: typeof item.conceptId === "object" ? item.conceptId?._id?.toString() : item.conceptId?.toString(),
-      supplierId:
-        typeof item.supplierId === "object" ? item.supplierId?._id?.toString() : item.supplierId?.toString(),
-      projectId: typeof item.projectId === "object" ? item.projectId?._id?.toString() : item.projectId?.toString(),
-      categoryId: typeof item.categoryId === "object" ? item.categoryId?._id?.toString() : item.categoryId?.toString(),
-      conceptName: item.conceptId?.name || "—",
-      categoryName: item.categoryId?.name || "—",
-      supplierName: item.supplierId?.name || "—",
-      projectName: item.projectId?.name || item.projectNameSnapshot || item.projectName || "—",
-      mainType: item.mainType,
-      unit: item.unit,
-      pricingMode: item.pricingMode,
-      amount: Number.isSafeInteger(item.originalAmountCents) ? centsToAmount(item.originalAmountCents) : item.originalAmount,
-      capturedAmount: item.capturedAmount || null,
-      unitPrice: item.unitPrice,
-      totalPrice: item.totalPrice,
-      normalizedPrice: item.normalizedPrice,
-      normalizedQuantity: item.normalizedQuantity,
-      normalizedUnit: item.normalizedUnit,
-      geometryMeta: item.geometryMeta || null,
-      commercialUnit: item.commercialUnit || null,
-      commercialUnitPrice: item.commercialUnitPrice ?? null,
-      analysisUnit: item.analysisUnit || null,
-      analysisUnitPrice: item.analysisUnitPrice ?? null,
-      derivedValues: item.derivedValues,
-      captureOrigin: item.captureOrigin || "manual",
-      sourceFileName: item.sourceFileName || "",
-      sourceImportSessionId: item.sourceImportSessionId || null,
-      attributes: item.attributes || {},
-      location: item.location,
-      observations: item.observations,
-      dimensions: item.dimensions,
-      createdByName: item.createdBy?.name || "—",
-      createdByEmail: item.createdBy?.email || "",
-      createdAt: item.createdAt,
-    })),
+    items: items.map((item) => serializePriceRecord(item)),
     ...(hasPagination
       ? {
           pagination: {
@@ -139,24 +174,78 @@ export async function listPriceRecords(req, res) {
   });
 }
 
-async function resolveDependencies({ categoryId, conceptId, supplierId, projectId }) {
-  const [category, concept, supplier, project] = await Promise.all([
+function serializePriceRecord(item) {
+  const projectIds = getRecordProjectIds(item);
+  const projectNames = getRecordProjectNames(item);
+
+  return {
+    id: item.id,
+    priceDate: toDateOnlyString(item.priceDate),
+    conceptId: typeof item.conceptId === "object" ? item.conceptId?._id?.toString() : item.conceptId?.toString(),
+    supplierId:
+      typeof item.supplierId === "object" ? item.supplierId?._id?.toString() : item.supplierId?.toString(),
+    projectId: projectIds[0] || null,
+    projectIds,
+    categoryId: typeof item.categoryId === "object" ? item.categoryId?._id?.toString() : item.categoryId?.toString(),
+    conceptName: item.conceptId?.name || "—",
+    categoryName: item.categoryId?.name || "—",
+    supplierName: item.supplierId?.name || "—",
+    projectName: projectNames[0] || "—",
+    projectNames,
+    mainType: item.mainType,
+    unit: item.unit,
+    pricingMode: item.pricingMode,
+    amount: Number.isSafeInteger(item.originalAmountCents) ? centsToAmount(item.originalAmountCents) : item.originalAmount,
+    capturedAmount: item.capturedAmount || null,
+    unitPrice: item.unitPrice,
+    totalPrice: item.totalPrice,
+    normalizedPrice: item.normalizedPrice,
+    normalizedQuantity: item.normalizedQuantity,
+    normalizedUnit: item.normalizedUnit,
+    geometryMeta: item.geometryMeta || null,
+    commercialUnit: item.commercialUnit || null,
+    commercialUnitPrice: item.commercialUnitPrice ?? null,
+    analysisUnit: item.analysisUnit || null,
+    analysisUnitPrice: item.analysisUnitPrice ?? null,
+    derivedValues: item.derivedValues,
+    captureOrigin: item.captureOrigin || "manual",
+    sourceFileName: item.sourceFileName || "",
+    sourceImportSessionId: item.sourceImportSessionId || null,
+    attributes: item.attributes || {},
+    location: item.location,
+    observations: item.observations,
+    dimensions: item.dimensions,
+    createdByName: item.createdBy?.name || "—",
+    createdByEmail: item.createdBy?.email || "",
+    createdAt: item.createdAt,
+  };
+}
+
+async function resolveDependencies({ categoryId, conceptId, supplierId, projectId, projectIds }) {
+  const normalizedProjectIdsInput = normalizeProjectIdsInput(projectIds, projectId);
+  assertUniqueProjectIds(normalizedProjectIdsInput);
+  assertValidProjectIds(normalizedProjectIdsInput);
+  const normalizedProjectIds = toUniqueProjectIds(normalizedProjectIdsInput);
+
+  const [category, concept, supplier, projects] = await Promise.all([
     Category.findById(categoryId),
     Concept.findById(conceptId),
     supplierId ? Supplier.findById(supplierId) : Promise.resolve(null),
-    projectId ? Project.findById(projectId) : Promise.resolve(null),
+    normalizedProjectIds.length
+      ? Project.find({ _id: { $in: normalizedProjectIds } })
+      : Promise.resolve([]),
   ]);
 
   if (!category) throw new AppError("Category not found", 404);
   if (!concept) throw new AppError("Concept not found", 404);
   if (supplierId && !supplier) throw new AppError("Supplier not found", 404);
-  if (projectId && !project) throw new AppError("Project not found", 404);
+  if (normalizedProjectIds.length !== projects.length) throw new AppError("Project not found", 404);
 
-  return { category, concept, project };
+  return { category, concept, projects, normalizedProjectIds };
 }
 
-function validatePricingConsistency({ category, concept, project, mainType }) {
-  if (project && !project.isActive) {
+function validatePricingConsistency({ category, concept, projects, mainType }) {
+  if (projects.some((project) => !project.isActive)) {
     throw new AppError("Inactive projects cannot be used in price records", 400);
   }
 
@@ -187,12 +276,13 @@ function buildGeometryMeta(dimensions = {}) {
   };
 }
 
-function buildRecordPayload(validatedBody, reqUserId, concept, project) {
+function buildRecordPayload(validatedBody, reqUserId, concept, projects) {
   const {
     categoryId,
     conceptId,
     supplierId,
     projectId,
+    projectIds,
     mainType,
     unit,
     dimensions,
@@ -231,6 +321,11 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
       ? Number((pricingPayload.totalPrice / effectiveArea).toFixed(6))
       : null;
 
+  const normalizedProjectIds = normalizeProjectIdsInput(projectIds, projectId);
+  assertUniqueProjectIds(normalizedProjectIds);
+  const uniqueProjectIds = toUniqueProjectIds(normalizedProjectIds);
+  const activeProjects = projects.filter((project) => uniqueProjectIds.includes(project.id));
+
   return {
     ...rest,
     priceDate: parseDateOnly(rest.priceDate, { fieldName: "priceDate" }),
@@ -238,8 +333,9 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
     categoryId,
     conceptId,
     supplierId: supplierId || null,
-    projectId: projectId || null,
-    projectNameSnapshot: project?.name || "",
+    projectId: uniqueProjectIds[0] || null,
+    projectIds: uniqueProjectIds,
+    projectNameSnapshot: activeProjects.map((project) => project.name).join(", "),
     unit: resolvedUnit,
     dimensions,
     pricingMode: resolvePricingMode(mainType, pricingMode),
@@ -258,24 +354,32 @@ function buildRecordPayload(validatedBody, reqUserId, concept, project) {
 }
 
 export async function createPriceRecord(req, res) {
-  const { category, concept, project } = await resolveDependencies(req.validatedBody);
-  validatePricingConsistency({ category, concept, project, mainType: req.validatedBody.mainType });
+  const { category, concept, projects } = await resolveDependencies(req.validatedBody);
+  validatePricingConsistency({ category, concept, projects, mainType: req.validatedBody.mainType });
 
   const item = await PriceRecord.create({
-    ...buildRecordPayload(req.validatedBody, req.user.id, concept, project),
+    ...buildRecordPayload(req.validatedBody, req.user.id, concept, projects),
     createdBy: req.user.id,
   });
 
-  res.status(201).json({ item });
+  const populatedItem = await PriceRecord.findById(item._id)
+    .populate("categoryId", "name")
+    .populate("conceptId", "name")
+    .populate("supplierId", "name")
+    .populate("projectId", "name code")
+    .populate("projectIds", "name code")
+    .populate("createdBy", "name email");
+
+  res.status(201).json({ item: serializePriceRecord(populatedItem) });
 }
 
 export async function updatePriceRecord(req, res) {
-  const { category, concept, project } = await resolveDependencies(req.validatedBody);
-  validatePricingConsistency({ category, concept, project, mainType: req.validatedBody.mainType });
+  const { category, concept, projects } = await resolveDependencies(req.validatedBody);
+  validatePricingConsistency({ category, concept, projects, mainType: req.validatedBody.mainType });
 
   const item = await PriceRecord.findByIdAndUpdate(
     req.params.id,
-    buildRecordPayload(req.validatedBody, req.user.id, concept, project),
+    buildRecordPayload(req.validatedBody, req.user.id, concept, projects),
     { new: true, runValidators: true }
   );
 
@@ -283,7 +387,15 @@ export async function updatePriceRecord(req, res) {
     throw new AppError("Price record not found", 404);
   }
 
-  res.json({ item });
+  const populatedItem = await PriceRecord.findById(item._id)
+    .populate("categoryId", "name")
+    .populate("conceptId", "name")
+    .populate("supplierId", "name")
+    .populate("projectId", "name code")
+    .populate("projectIds", "name code")
+    .populate("createdBy", "name email");
+
+  res.json({ item: serializePriceRecord(populatedItem) });
 }
 
 export async function deletePriceRecord(req, res) {

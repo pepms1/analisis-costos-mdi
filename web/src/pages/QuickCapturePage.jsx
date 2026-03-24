@@ -12,7 +12,7 @@ const initialForm = {
   conceptId: "",
   unit: "",
   supplierId: "",
-  projectId: "",
+  projectIds: [],
   priceDate: getTodayDateOnlyLocal(),
   amount: "",
   pricingMode: "unit_price",
@@ -281,7 +281,8 @@ function QuickCapturePage() {
           categoryId: selectedConcept.categoryId,
           conceptId: form.conceptId,
           supplierId: form.supplierId || null,
-          projectId: form.projectId || null,
+          projectIds: form.projectIds,
+          projectId: form.projectIds[0] || null,
           unit: form.unit.trim(),
           priceDate: form.priceDate,
           pricingMode: effectivePricingMode,
@@ -434,15 +435,24 @@ function QuickCapturePage() {
           </label>
 
           <label className="field">
-            <span>Obra</span>
-            <select value={form.projectId} onChange={(event) => setForm((prev) => ({ ...prev, projectId: event.target.value }))}>
-              <option value="">Sin obra</option>
+            <span>Obras</span>
+            <select
+              multiple
+              value={form.projectIds}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  projectIds: Array.from(event.target.selectedOptions, (option) => option.value),
+                }))
+              }
+            >
               {projects.map((project) => (
                 <option key={project.id || project._id} value={project.id || project._id}>
                   {project.name}
                 </option>
               ))}
             </select>
+            <small className="muted">Si no seleccionas ninguna, el histórico se guarda como general (sin obra).</small>
           </label>
         </div>
 
