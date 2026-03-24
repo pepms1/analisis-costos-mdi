@@ -369,16 +369,19 @@ th {
   display: grid;
   place-items: center;
   padding: 24px;
+  background:
+    radial-gradient(circle at 10% 20%, rgba(29, 26, 79, 0.07), transparent 48%),
+    radial-gradient(circle at 90% 0%, rgba(11, 61, 145, 0.1), transparent 40%),
+    var(--brand-soft);
 }
 
 .auth-panel {
   width: min(100%, 460px);
-  background: rgba(255, 253, 249, 0.9);
-  border: 1px solid rgba(38, 70, 83, 0.12);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 28px;
   padding: 32px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
 }
 
 .auth-logo {
