@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
-import { formatCalendarDate, formatCurrency, formatPercent } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency, formatPercent, formatProjectsCompact } from "../utils/formatters";
 import { calculateAdjustedPrice, parseInflationByYear } from "../utils/priceAdjustments";
 
 function classifyQuote(adjustedPrice, quote) {
@@ -496,7 +496,11 @@ function ConsultaPage() {
           columns={[
             { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
             { key: "supplierName", label: "Proveedor" },
-            { key: "projectName", label: "Obra" },
+            {
+              key: "projectNames",
+              label: "Obra",
+              render: (value, row) => formatProjectsCompact(value || (row.projectName ? [row.projectName] : [])),
+            },
             { key: "amount", label: "Precio histórico", render: (value) => formatCurrency(value) },
             { key: "adjustedAmount", label: "Precio ajustado", render: (value) => formatCurrency(value) },
             { key: "dimensions", label: "Medida base", render: (value) => formatDimensions(value) },

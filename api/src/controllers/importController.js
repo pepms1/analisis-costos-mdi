@@ -905,6 +905,11 @@ function buildSuggestionPayload({ row, candidate, conceptById, supplierById, cat
   const suggestedSupplier = supplierById.get(String(candidate.priceRecord.supplierId || ""));
   const suggestedConcept = conceptById.get(String(candidate.priceRecord.conceptId || ""));
 
+  const suggestedProjectIds = Array.isArray(candidate.priceRecord.projectIds)
+    ? candidate.priceRecord.projectIds.map((item) => String(item)).filter(Boolean)
+    : [];
+  const suggestedLegacyProjectId = candidate.priceRecord.projectId ? String(candidate.priceRecord.projectId) : null;
+
   return {
     importRowId: row._id,
     suggestedCategoryId: candidate.priceRecord.categoryId || null,
@@ -912,7 +917,7 @@ function buildSuggestionPayload({ row, candidate, conceptById, supplierById, cat
     suggestedCost: candidate.priceRecord.unitPrice || candidate.priceRecord.normalizedPrice || candidate.priceRecord.totalPrice || null,
     suggestedDate: candidate.priceRecord.priceDate || null,
     suggestedHistoricId: candidate.priceRecord._id || null,
-    suggestedWorkId: candidate.priceRecord.projectId || null,
+    suggestedWorkId: suggestedProjectIds[0] || suggestedLegacyProjectId || null,
     score,
     reasonJson: {
       confidenceLabel: classifyConfidence(score),
@@ -1261,7 +1266,7 @@ export async function generateImportSessionSuggestions(req, res) {
 
   const priceRecords = await PriceRecord.find({})
     .sort({ priceDate: -1 })
-    .select("_id conceptId categoryId supplierId projectId priceDate unit unitPrice normalizedPrice totalPrice analysisUnit analysisUnitPrice")
+    .select("_id conceptId categoryId supplierId projectId projectIds priceDate unit unitPrice normalizedPrice totalPrice analysisUnit analysisUnitPrice")
     .lean();
 
   const suggestionDocs = [];
@@ -1916,6 +1921,7 @@ export async function applyImportSession(req, res) {
               conceptId: concept._id,
               supplierId: finalSupplierId,
               projectId: finalProjectId,
+              projectIds: finalProjectId ? [finalProjectId] : [],
               unit: commercialUnit,
               priceDate: finalDate,
               pricingMode: "unit_price",
