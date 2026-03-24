@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { apiRequest } from "../api/client";
+import { sortByLabel } from "../utils/sorting";
 
 const MAPPING_FIELDS = [
   { key: "concept", label: "Concepto / descripción / partida", required: true },
@@ -138,9 +139,9 @@ function ExcelImportPage() {
         ]);
 
         setCatalogs({
-          categories: categoriesResponse.items || [],
-          suppliers: suppliersResponse.items || [],
-          projects: projectsResponse.items || [],
+          categories: sortByLabel(categoriesResponse.items || [], (item) => item.name),
+          suppliers: sortByLabel(suppliersResponse.items || [], (item) => item.name),
+          projects: sortByLabel(projectsResponse.items || [], (item) => item.name),
         });
       } catch {
         // Catálogos opcionales para revisión manual.

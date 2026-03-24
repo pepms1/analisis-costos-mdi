@@ -41,7 +41,8 @@ export async function listConcepts(req, res) {
   if (status === "inactive") query.isActive = false;
   const items = await Concept.find(query)
     .populate("categoryId", "name")
-    .sort({ createdAt: -1 });
+    .collation({ locale: "es", strength: 1 })
+    .sort({ name: 1, createdAt: -1 });
 
   res.json({
     items: items.map((item) => ({

@@ -7,6 +7,7 @@ import { getTodayDateOnlyLocal } from "../utils/dateOnly";
 import { PERMISSIONS } from "../utils/permissions";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 import { canonicalizeProjectIds } from "../utils/projectIds";
+import { sortByLabel } from "../utils/sorting";
 
 const initialForm = {
   categoryFilterId: "",
@@ -81,25 +82,25 @@ function QuickCapturePage() {
       apiRequest("/projects"),
     ]);
 
-    setCategories((categoriesData.items || []).filter((category) => category.isActive));
-    setConcepts((conceptsData.items || []).filter((concept) => concept.isActive));
-    setSuppliers(suppliersData.items || []);
-    setProjects((projectsData.items || []).filter((project) => project.isActive));
+    setCategories(sortByLabel((categoriesData.items || []).filter((category) => category.isActive), (item) => item.name));
+    setConcepts(sortByLabel((conceptsData.items || []).filter((concept) => concept.isActive), (item) => item.name));
+    setSuppliers(sortByLabel(suppliersData.items || [], (item) => item.name));
+    setProjects(sortByLabel((projectsData.items || []).filter((project) => project.isActive), (item) => item.name));
   }
 
   async function refreshCategories() {
     const categoriesData = await apiRequest("/categories");
-    setCategories((categoriesData.items || []).filter((category) => category.isActive));
+    setCategories(sortByLabel((categoriesData.items || []).filter((category) => category.isActive), (item) => item.name));
   }
 
   async function refreshConcepts() {
     const conceptsData = await apiRequest("/concepts");
-    setConcepts((conceptsData.items || []).filter((concept) => concept.isActive));
+    setConcepts(sortByLabel((conceptsData.items || []).filter((concept) => concept.isActive), (item) => item.name));
   }
 
   async function refreshSuppliers() {
     const suppliersData = await apiRequest("/suppliers");
-    setSuppliers(suppliersData.items || []);
+    setSuppliers(sortByLabel(suppliersData.items || [], (item) => item.name));
   }
 
   useEffect(() => {

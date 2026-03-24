@@ -6,6 +6,7 @@ import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 import { CALCULATION_TYPE_OPTIONS, MAIN_TYPE_OPTIONS } from "../utils/constants";
+import { sortByLabel } from "../utils/sorting";
 
 const initialForm = {
   name: "",
@@ -53,8 +54,8 @@ function ConceptsPage() {
       apiRequest(`/concepts?status=${statusFilter}`),
       apiRequest("/categories"),
     ]);
-    setItems(conceptsData.items);
-    setCategories(categoriesData.items);
+    setItems(sortByLabel(conceptsData.items || [], (item) => item.name));
+    setCategories(sortByLabel(categoriesData.items || [], (item) => item.name));
   }
 
   useEffect(() => {

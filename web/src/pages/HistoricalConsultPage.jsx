@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../utils/formatters";
+import { sortByLabel } from "../utils/sorting";
 
 const PAGE_SIZE = 25;
 
@@ -95,10 +96,10 @@ function HistoricalConsultPage() {
   useEffect(() => {
     Promise.all([apiRequest("/categories"), apiRequest("/concepts"), apiRequest("/suppliers"), apiRequest("/projects")])
       .then(([categoriesData, conceptsData, suppliersData, projectsData]) => {
-        setCategories(categoriesData.items || []);
-        setConcepts(conceptsData.items || []);
-        setSuppliers(suppliersData.items || []);
-        setProjects(projectsData.items || []);
+        setCategories(sortByLabel(categoriesData.items || [], (item) => item.name));
+        setConcepts(sortByLabel(conceptsData.items || [], (item) => item.name));
+        setSuppliers(sortByLabel(suppliersData.items || [], (item) => item.name));
+        setProjects(sortByLabel(projectsData.items || [], (item) => item.name));
       })
       .catch(() => {
         setCategories([]);
