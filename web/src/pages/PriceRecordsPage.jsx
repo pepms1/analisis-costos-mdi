@@ -10,6 +10,7 @@ import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../ut
 import { getYearFromDateOnly, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 import { canonicalizeProjectIds, normalizeProjectSelection } from "../utils/projectIds";
+import { sortByLabel } from "../utils/sorting";
 
 const getDefaultYear = () => new Date().getFullYear().toString();
 const getYearMidDate = (year) => `${year}-07-01`;
@@ -67,10 +68,10 @@ function PriceRecordsPage() {
       apiRequest("/projects"),
     ]);
 
-    setCategories(categoriesData.items);
-    setConcepts(conceptsData.items);
-    setSuppliers(suppliersData.items);
-    setProjects(projectsData.items);
+    setCategories(sortByLabel(categoriesData.items || [], (item) => item.name));
+    setConcepts(sortByLabel(conceptsData.items || [], (item) => item.name));
+    setSuppliers(sortByLabel(suppliersData.items || [], (item) => item.name));
+    setProjects(sortByLabel(projectsData.items || [], (item) => item.name));
   }
 
   useEffect(() => {

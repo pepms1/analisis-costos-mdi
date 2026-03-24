@@ -4,6 +4,7 @@ import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { formatCurrency, formatPercent } from "../utils/formatters";
 import { getTodayDateOnlyLocal } from "../utils/dateOnly";
+import { sortByLabel } from "../utils/sorting";
 
 const initialForm = {
   conceptId: "",
@@ -42,8 +43,8 @@ function QuoteChecksPage() {
     ]);
 
     setItems(checksData.items);
-    setConcepts(conceptsData.items);
-    setSuppliers(suppliersData.items);
+    setConcepts(sortByLabel(conceptsData.items || [], (item) => item.name));
+    setSuppliers(sortByLabel(suppliersData.items || [], (item) => item.name));
   }
 
   useEffect(() => {

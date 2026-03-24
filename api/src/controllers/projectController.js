@@ -19,7 +19,9 @@ export async function listProjects(req, res) {
     query.isActive = true;
   }
 
-  const items = await Project.find(query).sort({ name: 1, createdAt: -1 });
+  const items = await Project.find(query)
+    .collation({ locale: "es", strength: 1 })
+    .sort({ name: 1, createdAt: -1 });
   res.json({
     items: items.map((item) => ({
       id: item.id,

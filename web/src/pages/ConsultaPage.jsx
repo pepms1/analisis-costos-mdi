@@ -4,6 +4,7 @@ import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { formatCalendarDate, formatCurrency, formatPercent, formatProjectsCompact } from "../utils/formatters";
 import { calculateAdjustedPrice, parseInflationByYear } from "../utils/priceAdjustments";
+import { compareSpanishLabels, sortByLabel } from "../utils/sorting";
 
 function classifyQuote(adjustedPrice, quote) {
   if (!Number.isFinite(adjustedPrice) || adjustedPrice <= 0 || !Number.isFinite(quote) || quote <= 0) return null;
@@ -125,8 +126,8 @@ function ConsultaPage() {
   useEffect(() => {
     Promise.all([apiRequest("/categories"), apiRequest("/concepts"), apiRequest("/adjustments")])
       .then(([categoriesData, conceptsData, adjustmentsData]) => {
-        setCategories(categoriesData.items || []);
-        setConcepts(conceptsData.items || []);
+        setCategories(sortByLabel(categoriesData.items || [], (item) => item.name));
+        setConcepts(sortByLabel(conceptsData.items || [], (item) => item.name));
         setAdjustments(adjustmentsData.items || []);
       })
       .catch(() => {
@@ -175,7 +176,7 @@ function ConsultaPage() {
         const bStartsWith = term ? bName.startsWith(term) : false;
 
         if (aStartsWith !== bStartsWith) return aStartsWith ? -1 : 1;
-        return aName.localeCompare(bName, "es");
+        return compareSpanishLabels(aName, bName);
       })
       .slice(0, 50);
   }, [concepts, filters.categoryId, filters.search]);

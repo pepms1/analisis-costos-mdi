@@ -6,7 +6,9 @@ export async function listSuppliers(req, res) {
   const query = {};
   if (status === "active") query.isActive = true;
   if (status === "inactive") query.isActive = false;
-  const items = await Supplier.find(query).sort({ createdAt: -1 });
+  const items = await Supplier.find(query)
+    .collation({ locale: "es", strength: 1 })
+    .sort({ name: 1, createdAt: -1 });
   res.json({
     items: items.map((item) => ({
       id: item.id,

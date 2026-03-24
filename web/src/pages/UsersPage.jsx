@@ -7,6 +7,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 import { ROLE_OPTIONS } from "../utils/constants";
 import { formatDate } from "../utils/formatters";
+import { sortByLabel } from "../utils/sorting";
 
 const initialForm = {
   name: "",
@@ -26,7 +27,7 @@ function UsersPage() {
 
   async function loadUsers() {
     const data = await apiRequest(`/users?status=${statusFilter}`);
-    setUsers(data.items);
+    setUsers(sortByLabel(data.items || [], (item) => item.name));
   }
 
   useEffect(() => {

@@ -8,6 +8,7 @@ import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../ut
 import { getTodayDateOnlyLocal, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 import { canonicalizeProjectIds, normalizeProjectSelection } from "../utils/projectIds";
+import { sortByLabel } from "../utils/sorting";
 
 const PAGE_SIZE = 20;
 const LABOR_PRICING_MODE = "total_price";
@@ -84,10 +85,10 @@ function HistoricalAdminCatalogPage() {
   useEffect(() => {
     Promise.all([apiRequest("/categories"), apiRequest("/concepts"), apiRequest("/suppliers"), apiRequest("/projects")])
       .then(([categoriesData, conceptsData, suppliersData, projectsData]) => {
-        setCategories(categoriesData.items || []);
-        setConcepts(conceptsData.items || []);
-        setSuppliers(suppliersData.items || []);
-        setProjects(projectsData.items || []);
+        setCategories(sortByLabel(categoriesData.items || [], (item) => item.name));
+        setConcepts(sortByLabel(conceptsData.items || [], (item) => item.name));
+        setSuppliers(sortByLabel(suppliersData.items || [], (item) => item.name));
+        setProjects(sortByLabel(projectsData.items || [], (item) => item.name));
       })
       .catch(() => {
         setCategories([]);
