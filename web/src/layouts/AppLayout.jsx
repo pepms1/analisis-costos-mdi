@@ -103,7 +103,7 @@ function AppLayout() {
 
       <aside className={`sidebar ${isMobileMenuOpen ? "is-open" : ""}`}>
         <div>
-          <div className="brand-badge">MDI</div>
+          <img src="/LOGO%20GRUPO%20MDI.jpg" alt="Logo Grupo MDI" className="sidebar-logo" />
           <h1>Analisis de Costos Grupo MDI</h1>
           <p className="sidebar-copy">Consulta primero. Captura rápido. Administración como soporte.</p>
         </div>

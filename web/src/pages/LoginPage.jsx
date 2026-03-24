@@ -33,6 +33,7 @@ function LoginPage() {
   return (
     <div className="auth-shell">
       <div className="auth-panel">
+        <img src="/LOGO%20GRUPO%20MDI.jpg" alt="Logo Grupo MDI" className="auth-logo" />
         <p className="eyebrow">Acceso seguro</p>
         <h1>Analisis de Costos Grupo MDI</h1>
         <p className="muted">
