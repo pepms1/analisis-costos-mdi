@@ -31,8 +31,8 @@ const initialForm = {
 };
 
 function PriceRecordsPage() {
-  const { hasPermission } = useAuth();
-  const canManage = hasPermission(PERMISSIONS.PRICES_EDIT);
+  const { user, hasPermission } = useAuth();
+  const canManage = hasPermission(PERMISSIONS.PRICES_EDIT) || user?.role === "capturista";
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);
