@@ -233,7 +233,7 @@ function HistoricalConsultPage() {
         columns={[
           { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
           { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
-          { key: "amount", label: "Precio registrado", render: (value) => formatCurrency(value) },
+          { key: "amount", label: "Precio registrado", render: (value) => <strong>{formatCurrency(value)}</strong> },
           { key: "conceptName", label: "Concepto" },
           { key: "categoryName", label: "Categoría" },
           { key: "supplierName", label: "Proveedor" },
