@@ -4,7 +4,8 @@ import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
-import { formatCurrency, formatDate } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency } from "../utils/formatters";
+import { getTodayDateOnlyLocal, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
 const PAGE_SIZE = 20;
@@ -17,7 +18,7 @@ const initialForm = {
   supplierId: "",
   projectId: "",
   unit: "pieza",
-  priceDate: new Date().toISOString().slice(0, 10),
+  priceDate: getTodayDateOnlyLocal(),
   pricingMode: "unit_price",
   amount: "",
   location: "",
@@ -200,7 +201,7 @@ function HistoricalAdminCatalogPage() {
       supplierId: row.supplierId || "",
       projectId: row.projectId || "",
       unit: row.unit || "pieza",
-      priceDate: row.priceDate ? new Date(row.priceDate).toISOString().slice(0, 10) : initialForm.priceDate,
+      priceDate: row.priceDate ? toDateOnlyString(row.priceDate) : initialForm.priceDate,
       pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
       amount: row.capturedAmount || (row.amount ? normalizeMoneyDraft(String(row.amount)) : ""),
       location: row.location || "",
@@ -279,7 +280,7 @@ function HistoricalAdminCatalogPage() {
   }
 
   async function handleDelete(row) {
-    if (!window.confirm(`¿Seguro que deseas eliminar el histórico del ${formatDate(row.priceDate)}? Esta acción es permanente.`)) return;
+    if (!window.confirm(`¿Seguro que deseas eliminar el histórico del ${formatCalendarDate(row.priceDate)}? Esta acción es permanente.`)) return;
 
     setError("");
     setSuccessMessage("");
@@ -510,7 +511,7 @@ function HistoricalAdminCatalogPage() {
 
       <DataTable
         columns={[
-          { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
+          { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
           { key: "projectName", label: "Obra", render: (value) => value || "Sin obra" },
           { key: "conceptName", label: "Concepto" },
           { key: "categoryName", label: "Categoría" },

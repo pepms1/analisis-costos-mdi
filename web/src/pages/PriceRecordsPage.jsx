@@ -6,7 +6,8 @@ import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 import { MAIN_TYPE_OPTIONS } from "../utils/constants";
-import { formatCurrency, formatDate } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency } from "../utils/formatters";
+import { getYearFromDateOnly, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
 
 const getDefaultYear = () => new Date().getFullYear().toString();
@@ -184,7 +185,7 @@ function PriceRecordsPage() {
   }
 
   async function handleDelete(item) {
-    if (!window.confirm(`¿Seguro que deseas eliminar el historico del ${formatDate(item.priceDate)}? Esta accion es permanente.`)) return;
+    if (!window.confirm(`¿Seguro que deseas eliminar el historico del ${formatCalendarDate(item.priceDate)}? Esta accion es permanente.`)) return;
 
     try {
       setError("");
@@ -406,7 +407,7 @@ function PriceRecordsPage() {
           </div>
           <DataTable
             columns={[
-              { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
+              { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
               { key: "projectName", label: "Obra" },
               {
                 key: "categoryId",
@@ -438,7 +439,7 @@ function PriceRecordsPage() {
                               supplierId: row.supplierId || "",
                               projectId: row.projectId || "",
                               unit: row.unit || "pieza",
-                              priceDate: row.priceDate ? new Date(row.priceDate).toISOString().slice(0, 10) : initialForm.priceDate,
+                              priceDate: row.priceDate ? toDateOnlyString(row.priceDate) : initialForm.priceDate,
                               pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
                               amount: row.capturedAmount || (row.amount ? normalizeMoneyDraft(String(row.amount)) : ""),
                               location: row.location || "",
@@ -448,7 +449,7 @@ function PriceRecordsPage() {
                               measurementUnit: row.dimensions?.measurementUnit || "cm",
                             });
                             if (row.priceDate) {
-                              setCaptureYear(new Date(row.priceDate).toISOString().slice(0, 4));
+                              setCaptureYear(getYearFromDateOnly(row.priceDate));
                             }
                             setError("");
                           }}

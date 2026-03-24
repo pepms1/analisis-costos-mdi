@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
-import { formatCurrency, formatDate, formatPercent } from "../utils/formatters";
+import { formatCalendarDate, formatCurrency, formatPercent } from "../utils/formatters";
 import { calculateAdjustedPrice, parseInflationByYear } from "../utils/priceAdjustments";
 
 function classifyQuote(adjustedPrice, quote) {
@@ -372,7 +372,7 @@ function ConsultaPage() {
             <span className="label-mobile">Último precio</span>
           </p>
           <h3>{formatCurrency(latestRecord?.amount)}</h3>
-          <p className="muted stat-meta">Fecha: {formatDate(latestRecord?.priceDate)}</p>
+          <p className="muted stat-meta">Fecha: {formatCalendarDate(latestRecord?.priceDate)}</p>
           <p className="muted stat-meta">Prov: {latestRecord?.supplierName || "—"}</p>
         </div>
         <div className="card stat-card consulta-secondary-card">
@@ -381,7 +381,7 @@ function ConsultaPage() {
             <span className="label-mobile">Primer precio</span>
           </p>
           <h3>{formatCurrency(firstRecord?.amount)}</h3>
-          <p className="muted stat-meta">Fecha: {formatDate(firstRecord?.priceDate)}</p>
+          <p className="muted stat-meta">Fecha: {formatCalendarDate(firstRecord?.priceDate)}</p>
           <p className="muted stat-meta">Prov: {firstRecord?.supplierName || "—"}</p>
         </div>
         <div className="card stat-card consulta-secondary-card">
@@ -494,7 +494,7 @@ function ConsultaPage() {
       <div className="content-grid consulta-history-grid">
         <DataTable
           columns={[
-            { key: "priceDate", label: "Fecha", render: (value) => formatDate(value) },
+            { key: "priceDate", label: "Fecha", render: (value) => formatCalendarDate(value) },
             { key: "supplierName", label: "Proveedor" },
             { key: "projectName", label: "Obra" },
             { key: "amount", label: "Precio histórico", render: (value) => formatCurrency(value) },
