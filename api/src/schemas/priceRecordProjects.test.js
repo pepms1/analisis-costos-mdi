@@ -44,3 +44,13 @@ test("normalizeProjectIdsInput removes empty values and keeps insertion order", 
   const normalized = normalizeProjectIdsInput([idA, "", "  ", null, undefined, idB], idC);
   assert.deepEqual(normalized, [idA, idB, idC]);
 });
+
+test("normalizeProjectIdsInput avoids duplicating legacy projectId when already present in projectIds", () => {
+  const normalized = normalizeProjectIdsInput([idA, idB], idA);
+  assert.deepEqual(normalized, [idA, idB]);
+});
+
+test("normalizeProjectIdsInput preserves duplicates that come from projectIds array", () => {
+  const normalized = normalizeProjectIdsInput([idA, idA], idA);
+  assert.deepEqual(normalized, [idA, idA]);
+});

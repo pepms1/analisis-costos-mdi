@@ -9,6 +9,7 @@ import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../utils/formatters";
 import { getYearFromDateOnly, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
+import { canonicalizeProjectIds, normalizeProjectSelection } from "../utils/projectIds";
 
 const getDefaultYear = () => new Date().getFullYear().toString();
 const getYearMidDate = (year) => `${year}-07-01`;
@@ -142,13 +143,15 @@ function PriceRecordsPage() {
       return;
     }
 
+    const normalizedProjectIds = canonicalizeProjectIds(form.projectIds);
+
     const payload = {
       mainType: form.mainType,
       categoryId: form.categoryId,
       conceptId: form.conceptId,
       supplierId: form.supplierId || null,
-      projectIds: form.projectIds,
-      projectId: form.projectIds[0] || null,
+      projectIds: normalizedProjectIds,
+      projectId: normalizedProjectIds[0] || null,
       unit: form.unit,
       priceDate: form.priceDate,
       pricingMode: effectivePricingMode,
@@ -295,7 +298,7 @@ function PriceRecordsPage() {
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    projectIds: Array.from(e.target.selectedOptions, (option) => option.value),
+                    projectIds: canonicalizeProjectIds(Array.from(e.target.selectedOptions, (option) => option.value)),
                   })
                 }
               >
@@ -451,11 +454,7 @@ function PriceRecordsPage() {
                               categoryId: row.categoryId || "",
                               conceptId: row.conceptId || "",
                               supplierId: row.supplierId || "",
-                              projectIds: row.projectIds?.length
-                                ? row.projectIds
-                                : row.projectId
-                                  ? [row.projectId]
-                                  : [],
+                              projectIds: normalizeProjectSelection(row.projectIds, row.projectId),
                               unit: row.unit || "pieza",
                               priceDate: row.priceDate ? toDateOnlyString(row.priceDate) : initialForm.priceDate,
                               pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
