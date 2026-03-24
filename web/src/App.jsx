@@ -51,7 +51,7 @@ function App() {
         <Route
           path="importacion-excel/sesiones"
           element={
-            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_VIEW]}>
+            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_VIEW]} deniedRoles={["capturista"]}>
               <ImportSessionsPage />
             </ProtectedRoute>
           }
@@ -59,7 +59,7 @@ function App() {
         <Route
           path="importacion-excel"
           element={
-            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_CREATE]}>
+            <ProtectedRoute permissionsAll={[PERMISSIONS.PRICES_CREATE]} deniedRoles={["capturista"]}>
               <ExcelImportPage />
             </ProtectedRoute>
           }
