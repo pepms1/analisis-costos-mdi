@@ -87,17 +87,13 @@ p {
   display: none;
 }
 
-.brand-badge {
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+.sidebar-logo {
+  width: min(100%, 147px);
+  height: auto;
+  border-radius: 12px;
+  display: block;
   margin-bottom: 18px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  background: #fff;
 }
 
 .sidebar-copy {
@@ -368,6 +364,13 @@ th {
   backdrop-filter: blur(18px);
 }
 
+.auth-logo {
+  width: min(100%, 250px);
+  height: auto;
+  display: block;
+  margin: 0 auto 18px;
+}
+
 @media (max-width: 768px) {
   html,
   body,
@@ -434,10 +437,8 @@ th {
     display: block;
   }
 
-  .brand-badge {
-    width: 40px;
-    height: 40px;
-    border-radius: 14px;
+  .sidebar-logo {
+    width: min(100%, 126px);
     margin-bottom: 8px;
   }
 
