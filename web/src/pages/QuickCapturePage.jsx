@@ -6,6 +6,7 @@ import { MAIN_TYPE_OPTIONS } from "../utils/constants";
 import { getTodayDateOnlyLocal } from "../utils/dateOnly";
 import { PERMISSIONS } from "../utils/permissions";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
+import { canonicalizeProjectIds } from "../utils/projectIds";
 
 const initialForm = {
   categoryFilterId: "",
@@ -273,6 +274,8 @@ function QuickCapturePage() {
     }
 
     try {
+      const normalizedProjectIds = canonicalizeProjectIds(form.projectIds);
+
       await apiRequest("/price-records", {
         headers: { "x-capture-flow": "quick" },
         method: "POST",
@@ -281,8 +284,8 @@ function QuickCapturePage() {
           categoryId: selectedConcept.categoryId,
           conceptId: form.conceptId,
           supplierId: form.supplierId || null,
-          projectIds: form.projectIds,
-          projectId: form.projectIds[0] || null,
+          projectIds: normalizedProjectIds,
+          projectId: normalizedProjectIds[0] || null,
           unit: form.unit.trim(),
           priceDate: form.priceDate,
           pricingMode: effectivePricingMode,
@@ -442,7 +445,7 @@ function QuickCapturePage() {
               onChange={(event) =>
                 setForm((prev) => ({
                   ...prev,
-                  projectIds: Array.from(event.target.selectedOptions, (option) => option.value),
+                  projectIds: canonicalizeProjectIds(Array.from(event.target.selectedOptions, (option) => option.value)),
                 }))
               }
             >

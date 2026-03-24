@@ -29,8 +29,18 @@ export function normalizeProjectIdsInput(projectIds, projectId) {
     projectIds.forEach((value) => pushIfValid(value));
   }
 
-  pushIfValid(projectId);
-  return normalized.filter((value) => value !== "null" && value !== "undefined");
+  const cleaned = normalized.filter((value) => value !== "null" && value !== "undefined");
+  const normalizedLegacyProjectId = projectId ? String(projectId).trim() : "";
+  if (
+    normalizedLegacyProjectId &&
+    normalizedLegacyProjectId !== "null" &&
+    normalizedLegacyProjectId !== "undefined" &&
+    !cleaned.includes(normalizedLegacyProjectId)
+  ) {
+    cleaned.push(normalizedLegacyProjectId);
+  }
+
+  return cleaned;
 }
 
 function assertUniqueProjectIds(projectIds = []) {

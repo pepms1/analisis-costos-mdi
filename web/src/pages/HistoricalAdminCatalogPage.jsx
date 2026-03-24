@@ -7,6 +7,7 @@ import { PERMISSIONS } from "../utils/permissions";
 import { formatCalendarDate, formatCurrency, formatProjectsCompact } from "../utils/formatters";
 import { getTodayDateOnlyLocal, toDateOnlyString } from "../utils/dateOnly";
 import { isValidMoneyInput, normalizeMoneyDraft } from "../utils/money";
+import { canonicalizeProjectIds, normalizeProjectSelection } from "../utils/projectIds";
 
 const PAGE_SIZE = 20;
 const LABOR_PRICING_MODE = "total_price";
@@ -199,7 +200,7 @@ function HistoricalAdminCatalogPage() {
       categoryId: row.categoryId || "",
       conceptId: row.conceptId || "",
       supplierId: row.supplierId || "",
-      projectIds: row.projectIds?.length ? row.projectIds : row.projectId ? [row.projectId] : [],
+      projectIds: normalizeProjectSelection(row.projectIds, row.projectId),
       unit: row.unit || "pieza",
       priceDate: row.priceDate ? toDateOnlyString(row.priceDate) : initialForm.priceDate,
       pricingMode: row.mainType === "labor" ? LABOR_PRICING_MODE : row.pricingMode || "unit_price",
@@ -228,13 +229,15 @@ function HistoricalAdminCatalogPage() {
       return;
     }
 
+    const normalizedProjectIds = canonicalizeProjectIds(form.projectIds);
+
     const payload = {
       mainType: form.mainType,
       categoryId: form.categoryId,
       conceptId: form.conceptId,
       supplierId: form.supplierId || null,
-      projectIds: form.projectIds,
-      projectId: form.projectIds[0] || null,
+      projectIds: normalizedProjectIds,
+      projectId: normalizedProjectIds[0] || null,
       unit: form.unit,
       priceDate: form.priceDate,
       pricingMode: effectivePricingMode,
@@ -409,7 +412,7 @@ function HistoricalAdminCatalogPage() {
               onChange={(e) =>
                 setForm((prev) => ({
                   ...prev,
-                  projectIds: Array.from(e.target.selectedOptions, (option) => option.value),
+                  projectIds: canonicalizeProjectIds(Array.from(e.target.selectedOptions, (option) => option.value)),
                 }))
               }
             >
