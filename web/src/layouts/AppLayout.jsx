@@ -11,8 +11,18 @@ const primaryLinks = [
 const captureLinks = [
   { to: "/captura-rapida", label: "Captura rápida", permission: PERMISSIONS.PRICES_QUICK_CAPTURE },
   { to: "/historicos", label: "Captura avanzada", permission: PERMISSIONS.PRICES_VIEW },
-  { to: "/importacion-excel", label: "Importación asistida", permission: PERMISSIONS.PRICES_CREATE },
-  { to: "/importacion-excel/sesiones", label: "Sesiones de importación", permission: PERMISSIONS.PRICES_VIEW },
+  {
+    to: "/importacion-excel",
+    label: "Importación asistida",
+    permission: PERMISSIONS.PRICES_CREATE,
+    deniedRoles: ["capturista"],
+  },
+  {
+    to: "/importacion-excel/sesiones",
+    label: "Sesiones de importación",
+    permission: PERMISSIONS.PRICES_VIEW,
+    deniedRoles: ["capturista"],
+  },
 ];
 
 const catalogLinks = [
@@ -74,6 +84,13 @@ function AppLayout() {
     };
   }, [isMobileMenuOpen]);
 
+  const filterLinksByAccess = (links) =>
+    links.filter((link) => {
+      if (!hasPermission(link.permission)) return false;
+      if (link.deniedRoles?.includes(user?.role)) return false;
+      return true;
+    });
+
   return (
     <div className="app-shell">
       <button
@@ -94,22 +111,22 @@ function AppLayout() {
         <nav className="nav-groups">
           <LinkGroup
             title="Principal"
-            links={primaryLinks.filter((link) => hasPermission(link.permission))}
+            links={filterLinksByAccess(primaryLinks)}
             onNavigate={() => setIsMobileMenuOpen(false)}
           />
           <LinkGroup
             title="Captura"
-            links={captureLinks.filter((link) => hasPermission(link.permission))}
+            links={filterLinksByAccess(captureLinks)}
             onNavigate={() => setIsMobileMenuOpen(false)}
           />
           <LinkGroup
             title="Catálogos"
-            links={catalogLinks.filter((link) => hasPermission(link.permission))}
+            links={filterLinksByAccess(catalogLinks)}
             onNavigate={() => setIsMobileMenuOpen(false)}
           />
           <LinkGroup
             title="Administración"
-            links={adminLinks.filter((link) => hasPermission(link.permission))}
+            links={filterLinksByAccess(adminLinks)}
             onNavigate={() => setIsMobileMenuOpen(false)}
           />
         </nav>
