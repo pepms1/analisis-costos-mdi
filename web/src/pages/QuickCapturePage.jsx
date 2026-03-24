@@ -342,26 +342,27 @@ function QuickCapturePage() {
 
           <label className="field quick-capture-concept-field">
             <span>Concepto</span>
-            <div className="quick-capture-concept-inline">
-              <select value={form.conceptId} onChange={(event) => setForm((prev) => ({ ...prev, conceptId: event.target.value }))} required>
-                <option value="">Selecciona un concepto</option>
-                {filteredConcepts.map((concept) => (
-                  <option key={concept.id} value={concept.id}>
-                    {concept.name}
-                  </option>
-                ))}
-              </select>
-
-              {canManageCatalogs ? (
-                <div className="quick-create-actions" role="group" aria-label="Altas rápidas de catálogos">
-                  <button type="button" className="ghost-button" onClick={() => openQuickCreate("concept")}>+ Nuevo concepto</button>
-                  <button type="button" className="ghost-button" onClick={() => openQuickCreate("supplier")}>+ Nuevo proveedor</button>
-                  <button type="button" className="ghost-button" onClick={() => openQuickCreate("category")}>+ Nueva categoría</button>
-                </div>
-              ) : null}
-            </div>
-            <small className="muted">Resultados: {filteredConcepts.length}</small>
+            <select value={form.conceptId} onChange={(event) => setForm((prev) => ({ ...prev, conceptId: event.target.value }))} required>
+              <option value="">Selecciona un concepto</option>
+              {filteredConcepts.map((concept) => (
+                <option key={concept.id} value={concept.id}>
+                  {concept.name}
+                </option>
+              ))}
+            </select>
+            <small className="muted quick-capture-results">Resultados: {filteredConcepts.length}</small>
           </label>
+
+          {canManageCatalogs ? (
+            <div className="quick-capture-actions-column" role="group" aria-label="Altas rápidas de catálogos">
+              <span className="quick-capture-actions-spacer" aria-hidden="true" />
+              <div className="quick-create-actions">
+                <button type="button" className="ghost-button" onClick={() => openQuickCreate("concept")}>+ Nuevo concepto</button>
+                <button type="button" className="ghost-button" onClick={() => openQuickCreate("supplier")}>+ Nuevo proveedor</button>
+                <button type="button" className="ghost-button" onClick={() => openQuickCreate("category")}>+ Nueva categoría</button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="subgrid">

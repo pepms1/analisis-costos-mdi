@@ -1199,24 +1199,27 @@ th {
 }
 
 .quick-capture-catalog-head {
-  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
-  align-items: end;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr) minmax(220px, auto);
+  align-items: start;
 }
 
 .quick-capture-concept-field {
   min-width: 0;
 }
 
-.quick-capture-concept-inline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+.quick-capture-results {
+  margin-top: 2px;
 }
 
-.quick-capture-concept-inline select {
-  flex: 1 1 360px;
-  min-width: 220px;
+.quick-capture-actions-column {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.quick-capture-actions-spacer {
+  display: block;
+  min-height: 22px;
 }
 
 .quick-create-actions {
@@ -1224,7 +1227,7 @@ th {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-start;
-  flex: 0 1 auto;
+  align-items: center;
 }
 
 .quick-create-actions .ghost-button {
@@ -1237,13 +1240,8 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .quick-capture-concept-inline {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .quick-capture-concept-inline select {
-    min-width: 100%;
+  .quick-capture-actions-spacer {
+    display: none;
   }
 }
 
