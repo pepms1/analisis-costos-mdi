@@ -79,29 +79,32 @@ function HistoricalConsultPage() {
   const [categories, setCategories] = useState([]);
   const [concepts, setConcepts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, totalItems: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({
+    projectId: "",
     supplierId: "",
     categoryId: "",
     conceptId: "",
     search: "",
-    sort: "desc",
     page: 1,
   });
 
   useEffect(() => {
-    Promise.all([apiRequest("/categories"), apiRequest("/concepts"), apiRequest("/suppliers")])
-      .then(([categoriesData, conceptsData, suppliersData]) => {
+    Promise.all([apiRequest("/categories"), apiRequest("/concepts"), apiRequest("/suppliers"), apiRequest("/projects")])
+      .then(([categoriesData, conceptsData, suppliersData, projectsData]) => {
         setCategories(categoriesData.items || []);
         setConcepts(conceptsData.items || []);
         setSuppliers(suppliersData.items || []);
+        setProjects(projectsData.items || []);
       })
       .catch(() => {
         setCategories([]);
         setConcepts([]);
         setSuppliers([]);
+        setProjects([]);
       });
   }, []);
 
@@ -133,11 +136,11 @@ function HistoricalConsultPage() {
 
   async function fetchHistoricalRecords(activeFilters) {
     const query = new URLSearchParams();
+    if (activeFilters.projectId) query.set("projectId", activeFilters.projectId);
     if (activeFilters.supplierId) query.set("supplierId", activeFilters.supplierId);
     if (activeFilters.categoryId) query.set("categoryId", activeFilters.categoryId);
     if (activeFilters.conceptId) query.set("conceptId", activeFilters.conceptId);
     if (activeFilters.search.trim()) query.set("search", activeFilters.search.trim());
-    query.set("sort", activeFilters.sort);
     query.set("page", String(activeFilters.page));
     query.set("limit", String(PAGE_SIZE));
 
@@ -166,6 +169,18 @@ function HistoricalConsultPage() {
       />
 
       <div className="card form-grid compact-form historical-filters">
+        <label className="field">
+          <span>Obra</span>
+          <select value={filters.projectId} onChange={(event) => updateFilter("projectId", event.target.value)}>
+            <option value="">Todas las obras</option>
+            {projects.map((project) => (
+              <option key={project.id || project._id} value={project.id || project._id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="field">
           <span>Proveedor</span>
           <select value={filters.supplierId} onChange={(event) => updateFilter("supplierId", event.target.value)}>
@@ -199,14 +214,6 @@ function HistoricalConsultPage() {
                 {concept.name}
               </option>
             ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Orden por fecha</span>
-          <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
-            <option value="desc">Más recientes primero</option>
-            <option value="asc">Más antiguos primero</option>
           </select>
         </label>
 
