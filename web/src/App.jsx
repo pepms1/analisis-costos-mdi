@@ -30,7 +30,7 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<ConsultaPage />} />
+        <Route index element={<Navigate to="/consulta-historicos" replace />} />
         <Route path="consulta" element={<ConsultaPage />} />
         <Route
           path="consulta-historicos"

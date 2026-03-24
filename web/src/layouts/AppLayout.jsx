@@ -4,12 +4,15 @@ import { useAuth } from "../contexts/AuthContext";
 import { PERMISSIONS } from "../utils/permissions";
 
 const primaryLinks = [
-  { to: "/consulta", label: "Análisis", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/consulta-historicos", label: "Consulta de Históricos", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/consulta", label: "Análisis de Presupuesto", permission: PERMISSIONS.PRICES_VIEW },
+];
+
+const captureLinks = [
   { to: "/captura-rapida", label: "Captura rápida", permission: PERMISSIONS.PRICES_QUICK_CAPTURE },
-  { to: "/importacion-excel", label: "Importación asistida", permission: PERMISSIONS.PRICES_CREATE },
-  { to: "/importacion-excel/sesiones", label: "Sesiones importación", permission: PERMISSIONS.PRICES_VIEW },
   { to: "/historicos", label: "Captura avanzada", permission: PERMISSIONS.PRICES_VIEW },
+  { to: "/importacion-excel", label: "Importación asistida", permission: PERMISSIONS.PRICES_CREATE },
+  { to: "/importacion-excel/sesiones", label: "Sesiones de importación", permission: PERMISSIONS.PRICES_VIEW },
 ];
 
 const catalogLinks = [
@@ -35,6 +38,7 @@ function LinkGroup({ title, links, onNavigate }) {
           <NavLink
             key={link.to}
             to={link.to}
+            end
             className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
             onClick={onNavigate}
           >
@@ -91,6 +95,11 @@ function AppLayout() {
           <LinkGroup
             title="Principal"
             links={primaryLinks.filter((link) => hasPermission(link.permission))}
+            onNavigate={() => setIsMobileMenuOpen(false)}
+          />
+          <LinkGroup
+            title="Captura"
+            links={captureLinks.filter((link) => hasPermission(link.permission))}
             onNavigate={() => setIsMobileMenuOpen(false)}
           />
           <LinkGroup
